@@ -191,30 +191,11 @@
   const CHORD_SUFFIX = String.raw`(?:maj7|maj9|maj11|maj13|maj|min7|min9|min11|min13|min|mmaj7|m7b5|m6|m7|m9|m11|m13|m|dim7|dim9|dim|aug7|aug|sus2|sus4|sus|add2|add4|add6|add7|add9|add11|add13|6|7|9|11|13|5|2|4)`;
   const CHORD_BODY = String.raw`${CHORD_ROOT}(?:${CHORD_SUFFIX})*(?:\([^)]+\))?(?:/[A-G](?:#|b)?)?`;
   const CHORD_TOKEN_RE = new RegExp(`^(?:${CHORD_BODY}|N\\.?C\\.?|X|x|%)$`);
-  const LABEL_RE = /^\s*(?<label>intro|inter|intro\s+instrumental|verse|verso|coro|chorus|bridge|puente|outro|estrofa|estribillo|refrao|refrain)(?:\s+(?<number>\d+))?\s*[:\-]?\s*(?<rest>.*)$/i;
-
   const isBlankLine = (line) => line.trim() === '';
   const isDirectiveLine = (line) => {
     const t = line.trim();
     return t.startsWith('{') && t.endsWith('}');
   };
-
-  function mapLabelToSection(label) {
-    const n = label.toLowerCase();
-    if (n === 'verse' || n === 'verso' || n === 'estrofa') return 'verse';
-    if (n === 'chorus' || n === 'coro' || n === 'estribillo' || n === 'refrain' || n === 'refrao') return 'chorus';
-    if (n === 'bridge' || n === 'puente') return 'bridge';
-    return null;
-  }
-
-  function makeSectionDirective(kind, label) {
-    const d = kind === 'verse' ? 'start_of_verse' : kind === 'chorus' ? 'start_of_chorus' : 'start_of_bridge';
-    return label ? `{${d}: ${label}}` : `{${d}}`;
-  }
-
-  function makeEndDirective(kind) {
-    return kind === 'verse' ? '{end_of_verse}' : kind === 'chorus' ? '{end_of_chorus}' : '{end_of_bridge}';
-  }
 
   function formatChordOnlyLine(chords) {
     return chords.map((t) => `[${t.chord}]`).join(' ');
@@ -251,85 +232,189 @@
 
   const detectChordLine = (line) => extractChords(line).isChordLine;
 
-  function parseLabelLine(line) {
-    const match = LABEL_RE.exec(line);
-    if (!match || !match.groups) return null;
-    const { label, number } = match.groups;
-    const rest = match.groups.rest ?? '';
-    const n = label.toLowerCase();
-    if (n === 'intro' || n === 'inter' || n === 'outro') return { label, number, rest };
-    if (!mapLabelToSection(label)) return null;
-    return { label, number, rest };
+  // ── Etiquetas de sección (español / inglés / portugués) ──
+  // Cada etiqueta reconocida se emite como {comment: Nombre}, que es lo que
+  // usan WorshipTools / Worship Extreme en lugar de {start_of_chorus}, etc.
+  // Las claves están normalizadas: minúsculas, sin acentos, guiones = espacio.
+  const SECTION_ALIASES = {
+    'Verso': ['verso', 'verse', 'estrofa', 'estrofe', 'parte', 'stanza'],
+    'Pre-coro': ['pre coro', 'precoro', 'pre chorus', 'prechorus', 'pre refrao', 'prerefrao', 'pre estribillo'],
+    'Coro': ['coro', 'chorus', 'estribillo', 'refrao', 'refrain'],
+    'Puente': ['puente', 'bridge', 'ponte'],
+    'Intro': ['intro', 'introduccion', 'introducao', 'introduction', 'intro instrumental'],
+    'Interludio': ['inter', 'interludio', 'interlude', 'interlude instrumental'],
+    'Instrumental': ['instrumental'],
+    'Solo': ['solo'],
+    'Final': ['final', 'outro', 'ending', 'coda', 'finale'],
+    'Tag': ['tag'],
+  };
+  // Las secciones "instrumentales" pueden llevar acordes en la misma línea.
+  const INSTRUMENTAL = new Set(['Intro', 'Interludio', 'Instrumental', 'Solo', 'Final']);
+  // "Primeira Parte", "Segunda Parte"... (Cifra Club) -> Verso 1, Verso 2...
+  const ORDINALS = {
+    primeira: 1, primera: 1, first: 1, segunda: 2, second: 2, terceira: 3, tercera: 3, third: 3,
+    quarta: 4, cuarta: 4, fourth: 4, quinta: 5, fifth: 5,
+  };
+
+  const ALIAS_TO_NAME = new Map();
+  for (const [name, aliases] of Object.entries(SECTION_ALIASES)) {
+    for (const alias of aliases) ALIAS_TO_NAME.set(alias, name);
+  }
+  // Más largos primero para que "pre coro" gane sobre "coro".
+  const ALIAS_PATTERN = [...ALIAS_TO_NAME.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((a) => a.replace(/ /g, '[\\s\\-]*'))
+    .join('|');
+  const ORDINAL_PATTERN = Object.keys(ORDINALS).join('|');
+
+  const LABEL_RE = new RegExp(
+    '^\\s*[\\[(]?\\s*' +
+      '(?:(?<ord>' + ORDINAL_PATTERN + ')\\s+(?<parte>parte|part)' +
+      '|(?<num1>\\d+)\\s*(?:a|o|º|ª)?\\s+(?<alias1>' + ALIAS_PATTERN + ')(?![a-z])' +
+      '|(?<alias>' + ALIAS_PATTERN + ')(?![a-z])(?:\\s*(?<num>\\d+))?)' +
+      '\\s*[\\])]?\\s*(?:[:.\\-–]\\s*)?(?<rest>.*)$',
+  );
+
+  // Quita acentos carácter por carácter para que los índices sigan alineados.
+  function foldForMatch(line) {
+    let out = '';
+    for (const ch of line) {
+      const base = ch.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+      out += (base[0] || ch).toLowerCase();
+    }
+    return out;
   }
 
-  const capitalize = (s) => s[0].toUpperCase() + s.slice(1);
+  const REPEAT_RE = /^\(?\s*(?:x\s*(\d+)|(\d+)\s*x|(\d+)\s*veces|(\d+)\s*vezes|(\d+)\s*times)\s*\)?$/i;
 
-  function convertSpecialLine(line) {
+  function parseLabelLine(line) {
+    const folded = foldForMatch(line.normalize('NFC'));
+    const m = LABEL_RE.exec(folded);
+    if (!m || !m.groups) return null;
+    const g = m.groups;
+
+    let name;
+    let number;
+    if (g.ord) {
+      name = 'Verso';
+      number = String(ORDINALS[g.ord]);
+    } else {
+      const alias = (g.alias || g.alias1).replace(/[\s\-]+/g, ' ').trim();
+      name = ALIAS_TO_NAME.get(alias) || ALIAS_TO_NAME.get(alias.replace(/ /g, ''));
+      number = g.num || g.num1;
+    }
+    if (!name) return null;
+
+    // El "resto" se toma del texto original (mismas posiciones).
+    const restStart = m[0].length - (g.rest || '').length;
+    const rest = line.normalize('NFC').slice(restStart);
+    return { name, number, rest };
+  }
+
+  // ── Diccionario personal ──
+  // Formato, una regla por línea:
+  //   Primeira parte = Verso 1
+  //   Pre-Estribillo = {comment: Pre-coro}
+  //   # las líneas con # son comentarios
+  function dictKey(text) {
+    return foldForMatch(text.normalize('NFC'))
+      .trim()
+      .replace(/^[\[(]\s*/, '')
+      .replace(/\s*[\])]$/, '')
+      .replace(/\s*[:.\-–]\s*$/, '')
+      .replace(/[\s\-_]+/g, ' ')
+      .trim();
+  }
+
+  function parseDictionary(text) {
+    const map = new Map();
+    for (const raw of (text || '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = dictKey(line.slice(0, eq));
+      let value = line.slice(eq + 1).trim();
+      if (!key || !value) continue;
+      if (!value.startsWith('{')) value = `{comment: ${value}}`;
+      map.set(key, value);
+    }
+    return map;
+  }
+
+  function convertSpecialLine(line, dictionary) {
+    if (dictionary && dictionary.size && !isBlankLine(line)) {
+      const custom = dictionary.get(dictKey(line));
+      if (custom) return { kind: 'label', lines: [custom] };
+    }
+
     const parsed = parseLabelLine(line);
     if (!parsed) return { kind: 'none', lines: [] };
 
-    const { label, number, rest } = parsed;
-    const section = mapLabelToSection(label);
+    const { name, number, rest } = parsed;
+    let label = number ? `${name} ${number}` : name;
+    const trimmed = rest.trim();
 
-    if (section && isBlankLine(rest)) {
-      const sectionLabel = number ? `${capitalize(label)} ${number}` : undefined;
-      return { kind: 'section-start', lines: [makeSectionDirective(section, sectionLabel)], openSection: section };
+    if (!trimmed) {
+      return { kind: 'label', lines: [`{comment: ${label}}`] };
     }
 
-    const n = label.toLowerCase();
-    const isInstrumental = n === 'intro' || n === 'inter' || n === 'intro instrumental' || n === 'outro';
-
-    if (isInstrumental && rest.trim()) {
-      const extracted = extractChords(rest);
-      if (extracted.isChordLine) {
-        return {
-          kind: 'comment-and-chords',
-          lines: [`{comment: ${capitalize(label)}}`, formatChordOnlyLine(extracted.chords)],
-        };
-      }
+    const repeat = REPEAT_RE.exec(trimmed);
+    if (repeat) {
+      const times = repeat.slice(1).find(Boolean);
+      return { kind: 'label', lines: [`{comment: ${label} x${times}}`] };
     }
 
-    if (isInstrumental && isBlankLine(rest)) {
-      return { kind: 'comment-and-chords', lines: [`{comment: ${capitalize(label)}}`] };
+    // "Intro: D A E", "[Intro] D A E", "Coro: G D Em C"
+    const extracted = extractChords(rest);
+    if (extracted.isChordLine && (INSTRUMENTAL.has(name) || extracted.chords.length > 0)) {
+      return { kind: 'label', lines: [`{comment: ${label}}`, formatChordOnlyLine(extracted.chords)] };
     }
 
+    // Cualquier otra cosa (p. ej. una letra que empieza con "Coro de ángeles...")
     return { kind: 'none', lines: [] };
   }
 
   function mergeChordLine(chords, lyricLine, options = {}) {
-    if (options.mode === 'strict') return alignChordLineStrict(chords, lyricLine);
-    return alignChordLineMusical(chords, lyricLine, { sourceLineLength: options.sourceLineLength }).line;
+    // Cifra Club y otros sitios sangran la letra con espacios. Se quita esa
+    // sangría y se recorren los acordes la misma cantidad, así la alineación
+    // relativa se conserva y no quedan espacios sobrantes ("  [A] No me...").
+    const expanded = expandTabs(lyricLine);
+    const indent = expanded.length - expanded.trimStart().length;
+    let lyric = expanded;
+    let shifted = chords;
+    let sourceLineLength = options.sourceLineLength;
+    if (indent > 0 && expanded.trim()) {
+      lyric = expanded.slice(indent);
+      shifted = chords.map((c) => ({ ...c, index: Math.max(0, c.index - indent) }));
+      if (sourceLineLength !== undefined) sourceLineLength = Math.max(1, sourceLineLength - indent);
+    }
+
+    const line = options.mode === 'strict'
+      ? alignChordLineStrict(shifted, lyric)
+      : alignChordLineMusical(shifted, lyric, { sourceLineLength }).line;
+    return line.trimEnd();
   }
 
   function parseSong(text, options = {}) {
     const lines = text.replace(/\r\n?/g, '\n').split('\n');
     const output = [];
-    let openSection = null;
+    const dictionary = options.dictionary instanceof Map
+      ? options.dictionary
+      : parseDictionary(options.dictionary);
     let index = 0;
 
     while (index < lines.length) {
       const rawLine = lines[index];
-      const special = convertSpecialLine(rawLine);
+      const special = convertSpecialLine(rawLine, dictionary);
 
-      if (special.kind === 'section-start') {
-        if (openSection) output.push(makeEndDirective(openSection));
-        openSection = special.openSection ?? null;
-        output.push(...special.lines);
-        index += 1;
-        continue;
-      }
-
-      if (special.kind === 'comment-and-chords') {
+      if (special.kind === 'label') {
         output.push(...special.lines);
         index += 1;
         continue;
       }
 
       if (isBlankLine(rawLine)) {
-        if (openSection) {
-          output.push(makeEndDirective(openSection));
-          openSection = null;
-        }
         output.push('');
         index += 1;
         continue;
@@ -344,7 +429,7 @@
       const extracted = extractChords(rawLine);
       if (extracted.isChordLine) {
         const nextLine = lines[index + 1];
-        const nextSpecial = nextLine !== undefined ? convertSpecialLine(nextLine) : { kind: 'none' };
+        const nextSpecial = nextLine !== undefined ? convertSpecialLine(nextLine, dictionary) : { kind: 'none' };
         const canMerge =
           nextLine !== undefined &&
           !isBlankLine(nextLine) &&
@@ -366,11 +451,11 @@
         continue;
       }
 
-      output.push(rawLine);
+      // Letra sin acordes: quitar espacios sobrantes al final
+      output.push(rawLine.trimEnd());
       index += 1;
     }
 
-    if (openSection) output.push(makeEndDirective(openSection));
     return output.join('\n');
   }
 
@@ -392,8 +477,8 @@
     return `${directives.join('\n')}\n\n${normalized}`;
   }
 
-  function convertTxt(text, metadata = {}, mode = 'musical') {
-    const cho = parseSong(normalizeText(text), { mode });
+  function convertTxt(text, metadata = {}, mode = 'musical', dictionary = '') {
+    const cho = parseSong(normalizeText(text), { mode, dictionary });
     return `${applyMetadata(cho, metadata).trimEnd()}\n`;
   }
 
@@ -414,6 +499,7 @@
   const api = {
     parseSong, convertTxt, applyMetadata, extractChords, detectChordLine,
     alignChordLineMusical, alignChordLineStrict, sanitizeBaseName, normalizeText,
+    parseDictionary,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

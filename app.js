@@ -23,9 +23,30 @@
     return { title: $('title').value, author: $('author').value, key: $('key').value, tempo: $('tempo').value };
   }
 
+  // ── diccionario personal (se guarda en este navegador) ──
+  const dictBox = $('dictionary');
+  const DICT_KEY = 'songpro.dictionary';
+  try { dictBox.value = localStorage.getItem(DICT_KEY) || ''; } catch { /* sin almacenamiento */ }
+
+  function updateDictCount() {
+    const n = ChordConverter.parseDictionary(dictBox.value).size;
+    $('dictCount').textContent = n ? `(${n} regla${n === 1 ? '' : 's'})` : '';
+  }
+  updateDictCount();
+  if (dictBox.value.trim()) $('dictPanel').open = false;
+
+  dictBox.addEventListener('input', () => {
+    try { localStorage.setItem(DICT_KEY, dictBox.value); } catch { /* ignorar */ }
+    updateDictCount();
+    clearTimeout(debounce);
+    debounce = setTimeout(convertSafely, 250);
+  });
+
   function convert() {
     const text = input.value;
-    output.value = text.trim() ? ChordConverter.convertTxt(text, metadata(), modeSel.value) : '';
+    output.value = text.trim()
+      ? ChordConverter.convertTxt(text, metadata(), modeSel.value, dictBox.value)
+      : '';
     outputEditedByHand = false;
     if (!preview.hidden) renderPreview();
   }

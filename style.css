@@ -74,6 +74,28 @@ code { font-family: var(--mono); font-size: 0.9em; }
   outline-offset: -1px;
 }
 
+.dict {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.dict summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.dict summary span { color: var(--accent); font-weight: 500; margin-left: 4px; }
+.dict-body { padding: 0 14px 14px; }
+.dict-body p { margin: 0 0 8px; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+.dict textarea {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+  min-height: 110px;
+  flex: none;
+}
+
 .panes {
   flex: 1;
   min-height: 420px;
@@ -162,7 +184,16 @@ textarea {
 .preview .chords-only .seg { margin-right: 10px; }
 .preview .title { font-size: 1.3rem; font-weight: 700; margin: 0 0 2px; }
 .preview .sub { color: var(--muted); margin-bottom: 10px; }
-.preview .comment { color: var(--muted); font-style: italic; margin: 10px 0 2px; }
+.preview .comment {
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin: 12px 0 4px;
+  padding-left: 9px;
+  border-left: 3px solid var(--accent);
+}
 .preview .section { border-left: 3px solid var(--accent); padding-left: 12px; margin: 8px 0; }
 .preview .section-label { color: var(--accent); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-bottom: 2px; }
 .preview .blank { height: 0.9em; }

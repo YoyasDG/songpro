@@ -25,6 +25,24 @@
     </label>
   </section>
 
+  <details class="dict" id="dictPanel">
+    <summary>Mi diccionario de etiquetas <span id="dictCount"></span></summary>
+    <div class="dict-body">
+      <p>
+        Una regla por línea: <code>etiqueta = lo que quieres que salga</code>.
+        Si no pones llaves se convierte en <code>{comment: …}</code>.
+        No importan mayúsculas, acentos, corchetes ni dos puntos.
+        Tus reglas van antes que las etiquetas que ya reconoce solo
+        (Verso, Coro, Puente, Chorus, Refrão…). Se guarda en este navegador.
+      </p>
+      <textarea id="dictionary" spellcheck="false" rows="6" placeholder="Primeira parte = Verso 1
+Pre-Estribillo = {comment: Pre-coro}
+Estribillo = Coro
+Vamp = {comment: Vamp}
+# las líneas con # se ignoran"></textarea>
+    </div>
+  </details>
+
   <main class="panes">
     <div class="pane" id="dropzone">
       <div class="pane-head">
