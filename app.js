@@ -48,8 +48,86 @@
       ? ChordConverter.convertTxt(text, metadata(), modeSel.value, dictBox.value)
       : '';
     outputEditedByHand = false;
+    updateChordButtons();
     if (!preview.hidden) renderPreview();
   }
+
+  // ── escritura rápida de acordes ──
+  const chordButtons = $('chordButtons');
+  const customChord = $('customChord');
+  let lastChordKey = '';
+
+  // Acordes usados en el .cho, del más usado al menos usado
+  function songChords() {
+    const counts = new Map();
+    for (const line of output.value.split('\n')) {
+      if (/^\s*\{.*\}\s*$/.test(line)) continue; // directivas
+      for (const m of line.matchAll(/\[([^\]\s]+)\]/g)) {
+        counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([chord]) => chord);
+  }
+
+  function updateChordButtons() {
+    const chords = songChords();
+    const key = chords.join('|');
+    if (key === lastChordKey) return; // evitar redibujar en cada tecla
+    lastChordKey = key;
+    chordButtons.innerHTML = '';
+    if (!chords.length) {
+      chordButtons.innerHTML = '<span class="hint">Los acordes de la canción aparecerán aquí</span>';
+      return;
+    }
+    for (const chord of chords) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chord-btn';
+      b.textContent = chord;
+      b.title = `Insertar [${chord}] en el cursor`;
+      // mousedown + preventDefault: el editor no pierde el cursor
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => insertAtCursor(`[${chord}]`));
+      chordButtons.appendChild(b);
+    }
+  }
+
+  // Inserta texto en el cursor del editor .cho; Ctrl+Z lo deshace
+  function insertAtCursor(text, at) {
+    output.focus();
+    if (at !== undefined) output.setSelectionRange(at, at);
+    else output.setSelectionRange(output.selectionStart, output.selectionStart);
+    let ok = false;
+    try { ok = document.execCommand('insertText', false, text); } catch { ok = false; }
+    if (!ok) {
+      output.setRangeText(text, output.selectionStart, output.selectionEnd, 'end');
+      output.dispatchEvent(new Event('input'));
+    }
+  }
+
+  customChord.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const chord = customChord.value.trim().replace(/^\[|\]$/g, '');
+    if (!chord) return;
+    insertAtCursor(`[${chord}]`);
+    customChord.value = '';
+  });
+
+  // Etiqueta: se pone al inicio de la línea donde está el cursor
+  $('labelInsert').addEventListener('change', (e) => {
+    const label = e.target.value;
+    e.target.value = '';
+    if (!label) return;
+    const pos = output.selectionStart;
+    const lineStart = output.value.lastIndexOf('\n', pos - 1) + 1;
+    const lineEnd = output.value.indexOf('\n', pos);
+    const currentLine = output.value.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+    const directive = `{comment: ${label}}`;
+    insertAtCursor(currentLine.trim() ? `${directive}\n` : directive, lineStart);
+  });
 
   // Si el usuario editó el .cho a mano, confirmar antes de sobrescribirlo
   function convertSafely() {
@@ -66,6 +144,7 @@
   modeSel.addEventListener('change', convertSafely);
   output.addEventListener('input', () => {
     outputEditedByHand = true;
+    updateChordButtons();
     if (!preview.hidden) renderPreview();
   });
 
@@ -135,6 +214,7 @@
       const showPreview = tab.dataset.tab === 'preview';
       preview.hidden = !showPreview;
       output.hidden = showPreview;
+      $('quickbar').hidden = showPreview;
       if (showPreview) renderPreview();
     }));
 
@@ -198,4 +278,5 @@
       (sub ? `<div class="sub">${esc(sub)}</div>` : '') +
       (html || '<div class="sub">Nada que mostrar todavía.</div>');
   }
+  updateChordButtons();
 })();

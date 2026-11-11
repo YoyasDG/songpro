@@ -146,6 +146,43 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .btn:hover { filter: brightness(1.07); }
 .btn.ghost:hover { border-color: var(--accent); }
 
+/* Barra de escritura rápida de acordes */
+.quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.quick[hidden] { display: none; }
+.chord-buttons { display: flex; gap: 5px; flex-wrap: wrap; }
+.chord-btn {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  min-width: 38px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--chord);
+  cursor: pointer;
+}
+.chord-btn:hover { border-color: var(--accent); }
+.chord-btn:active { transform: translateY(1px); }
+.quick select, .quick input {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+.quick input { width: 80px; font-family: var(--mono); }
+.quick .hint { color: var(--muted); font-size: 0.8rem; }
+
 .tabs { display: flex; gap: 2px; background: var(--bg); padding: 3px; border-radius: 8px; }
 .tab {
   font: inherit; font-size: 0.85rem;
