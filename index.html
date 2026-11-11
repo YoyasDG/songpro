@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TXT → ChordPro</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>TXT <span>→</span> ChordPro</h1>
+    <p>Pega tu canción con acordes arriba de la letra y obtén el <code>.cho</code> al instante.</p>
+  </header>
+
+  <section class="meta">
+    <label>Título <input id="title" type="text" placeholder="Mi Dios" /></label>
+    <label>Autor <input id="author" type="text" placeholder="Opcional" /></label>
+    <label>Tono <input id="key" type="text" placeholder="G" /></label>
+    <label>Tempo <input id="tempo" type="text" placeholder="72" /></label>
+    <label>Alineación
+      <select id="mode">
+        <option value="musical" selected>Musical (recomendado)</option>
+        <option value="strict">Estricta (columna exacta)</option>
+      </select>
+    </label>
+  </section>
+
+  <main class="panes">
+    <div class="pane" id="dropzone">
+      <div class="pane-head">
+        <h2>Texto original</h2>
+        <div class="actions">
+          <label class="btn ghost">Abrir .txt
+            <input id="file" type="file" accept=".txt,text/plain" hidden />
+          </label>
+          <button class="btn ghost" id="clear" type="button">Limpiar</button>
+        </div>
+      </div>
+      <textarea id="input" spellcheck="false" placeholder="Intro: D  Am  C  G
+
+D           Am          C
+Digno es el Cordero Santo
+              G
+Santo Santo es Él
+
+(también puedes arrastrar un archivo .txt aquí)"></textarea>
+    </div>
+
+    <div class="pane">
+      <div class="pane-head">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="cho" type="button">.cho</button>
+          <button class="tab" data-tab="preview" type="button">Vista previa</button>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" id="copy" type="button">Copiar</button>
+          <button class="btn" id="download" type="button">Descargar .cho</button>
+        </div>
+      </div>
+      <textarea id="output" spellcheck="false" placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
+      <div id="preview" class="preview" hidden></div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span id="status"></span>
+    <span>Todo corre en tu navegador · nada se sube a ningún servidor</span>
+  </footer>
+
+  <script src="converter.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
