@@ -105,16 +105,13 @@ code { font-family: var(--font-mono); font-size: 13px; }
   gap: var(--space-4);
 }
 .stripes {
+  /* Logo: 6 cuerdas (mismo dibujo que el ícono de la app) */
   flex: none;
-  width: 56px;
-  border-radius: var(--radius-lg);
-  background: repeating-linear-gradient(
-    90deg,
-    var(--chambray) 0 8px,
-    var(--surface-000) 8px 12px
-  );
+  align-self: center;
+  width: 60px;
+  height: 60px;
+  background: url("icons/favicon.svg") center / contain no-repeat;
 }
-.top-text { padding: var(--space-1) 0; }
 .top h1 {
   margin: 0;
   font-family: var(--font-display);
@@ -203,7 +200,7 @@ code { font-family: var(--font-mono); font-size: 13px; }
   .panes { grid-template-columns: 1fr; flex: none; min-height: 0; }
   .pane { min-height: 0; }
   .pane > textarea, .pane > .preview { flex: none; height: 52vh; min-height: 320px; }
-  .stripes { width: 32px; }
+  .stripes { width: 48px; height: 48px; }
 }
 
 .pane {
