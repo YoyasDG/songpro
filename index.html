@@ -29,7 +29,20 @@
       <h1>SongPro</h1>
       <p>Pega tu canción con los acordes arriba de la letra y te damos el <code>.cho</code> listo para Planning.</p>
     </div>
+    <button class="btn ghost install-btn" id="installBtn" type="button" hidden>Instalar app</button>
   </header>
+
+  <!-- Guía para iPhone/iPad: Safari no permite instalar desde un botón -->
+  <dialog class="install-guide" id="installGuide">
+    <h2>Instala SongPro en tu iPhone</h2>
+    <ol>
+      <li>Toca el botón <strong>Compartir</strong> <span class="ios-share" aria-hidden="true">⬆︎</span> en la barra de Safari.</li>
+      <li>Baja y elige <strong>Agregar a pantalla de inicio</strong>.</li>
+      <li>Toca <strong>Agregar</strong>. Listo: SongPro aparece con su ícono.</li>
+    </ol>
+    <p class="install-note">Tiene que ser desde Safari. En otros navegadores del iPhone, ábrela primero en Safari.</p>
+    <form method="dialog"><button class="btn" type="submit">Entendido</button></form>
+  </dialog>
 
   <section class="meta">
     <label>Título <input id="title" type="text" placeholder="Mi Dios" /></label>
@@ -118,15 +131,14 @@ Santo Santo es Él
         </div>
         <div class="actions">
           <button class="btn ghost" id="copy" type="button">Copiar</button>
-          <select id="pdfCols" class="cols" title="Columnas del PDF">
-            <option value="1">1 columna</option>
-            <option value="2">2 columnas</option>
-          </select>
-          <button class="btn ghost" id="pdf" type="button" title="Abre la impresión: elige “Guardar como PDF”">PDF</button>
           <button class="btn" id="download" type="button">Descargar .cho</button>
         </div>
       </div>
       <div class="quick" id="quickbar">
+        <label class="key-pick" title="Transporta el .cho: lo que descargas queda en este tono">
+          <span>Tono</span>
+          <select id="choKey" disabled><option>—</option></select>
+        </label>
         <select id="labelInsert" title="Insertar etiqueta en la línea del cursor">
           <option value="">Etiqueta ▾</option>
           <option>Intro</option>
@@ -145,6 +157,27 @@ Santo Santo es Él
       </div>
       <textarea id="output" spellcheck="false" placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
       <div id="preview" class="preview" hidden></div>
+      <div class="pdfbar" id="pdfbar">
+        <label class="key-pick" title="Tono en el que va a sonar la canción (no cambia el .cho)">
+          <span>Suena en</span>
+          <select id="pdfKey"><option value="">Igual al .cho</option></select>
+        </label>
+        <label class="key-pick" title="Traste del capo: el PDF muestra las figuras que debes tocar">
+          <span>Capo</span>
+          <select id="pdfCapo">
+            <option value="0">Sin capo</option>
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+          </select>
+        </label>
+        <select id="pdfCols" class="cols" title="Columnas del PDF">
+          <option value="1">1 columna</option>
+          <option value="2">2 columnas</option>
+        </select>
+        <button class="btn" id="pdf" type="button" title="Abre la impresión: elige “Guardar como PDF”">Generar PDF</button>
+        <span class="pdf-hint" id="pdfHint"></span>
+      </div>
     </div>
   </main>
 
@@ -157,6 +190,7 @@ Santo Santo es Él
   <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
 
   <script src="converter.js"></script>
+  <script src="transposer.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
