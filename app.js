@@ -271,6 +271,14 @@
         }
         continue;
       }
+      // .cho viejos: una línea que es solo "[Primera Parte]" es etiqueta, no acorde
+      const bracketOnly = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+      if (bracketOnly && /\p{L}{2,}/u.test(bracketOnly[1]) &&
+          !ChordConverter.extractChords(bracketOnly[1]).isChordLine) {
+        close();
+        current = { cls: 'blk', body: `<div class="comment">${esc(bracketOnly[1].trim())}</div>` };
+        continue;
+      }
       if (line.trim() === '') {
         // una línea vacía cierra el bloque, salvo justo después de una etiqueta
         if (current && !current.hasLines) continue;
@@ -302,19 +310,139 @@
 
   // ── PDF: hoja de impresión + "Guardar como PDF" del navegador ──
   const printSheet = $('printSheet');
-  $('pdf').addEventListener('click', () => {
-    if (!output.value.trim()) return flash('Primero pega o abre una canción');
-    const sheet = buildSheet(output.value);
-    printSheet.innerHTML = sheet.html;
-    printSheet.classList.toggle('two-cols', $('pdfCols').value === '2');
+
+  function printHtml(html, fileName, twoCols) {
+    printSheet.innerHTML = html;
+    printSheet.classList.toggle('two-cols', twoCols);
     const previousTitle = document.title;
     // El navegador usa el título de la página como nombre del PDF
-    document.title = ChordConverter.sanitizeBaseName($('title').value || sheet.title || fileBaseName || 'cancion');
+    document.title = fileName;
     const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore); };
     window.addEventListener('afterprint', restore);
     window.print();
     setTimeout(restore, 1000);
+  }
+
+  $('pdf').addEventListener('click', () => {
+    if (!output.value.trim()) return flash('Primero pega o abre una canción');
+    const sheet = buildSheet(output.value);
+    printHtml(
+      `<section class="song-page">${sheet.html}</section>`,
+      ChordConverter.sanitizeBaseName($('title').value || sheet.title || fileBaseName || 'cancion'),
+      $('pdfCols').value === '2',
+    );
   });
+
+  // ── Cancionero: varios .cho / .txt → un solo PDF ──
+  const batchList = $('batchList');
+  const batchFiles = $('batchFiles');
+  let songs = []; // { name, cho, title, key }
+
+  const readAsText = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsText(file, 'utf-8');
+  });
+
+  function metaOf(cho) {
+    const get = (names) => {
+      for (const n of names) {
+        const m = new RegExp(`^\\s*\\{\\s*${n}\\s*:\\s*(.*?)\\s*\\}\\s*$`, 'im').exec(cho);
+        if (m) return m[1];
+      }
+      return '';
+    };
+    return { title: get(['title', 't']), key: get(['key']), author: get(['author', 'artist']) };
+  }
+
+  async function addBatchFiles(fileList) {
+    const files = [...fileList].filter((f) => /\.(cho|chordpro|chopro|crd|txt)$/i.test(f.name));
+    if (!files.length) return flash('Solo se aceptan archivos .cho o .txt');
+    files.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+    for (const file of files) {
+      const raw = ChordConverter.normalizeText(await readAsText(file));
+      const baseTitle = file.name.replace(/\.[^.]+$/, '');
+      let cho = /\.txt$/i.test(file.name)
+        ? ChordConverter.convertTxt(raw, {}, modeSel.value, dictBox.value)
+        : raw;
+      let meta = metaOf(cho);
+      if (!meta.title) {
+        cho = `{title: ${baseTitle}}\n${cho}`;
+        meta = metaOf(cho);
+      }
+      songs.push({ name: file.name, cho, ...meta });
+    }
+    renderBatch();
+    flash(`${files.length} canción${files.length === 1 ? '' : 'es'} agregada${files.length === 1 ? '' : 's'}`);
+  }
+
+  function renderBatch() {
+    $('batchCount').textContent = songs.length ? `(${songs.length})` : '';
+    $('batchPdf').disabled = !songs.length;
+    batchList.innerHTML = '';
+    if (!songs.length) {
+      batchList.innerHTML = '<li class="batch-empty">Todavía no hay canciones. Elige o arrastra tus archivos .cho aquí.</li>';
+      return;
+    }
+    songs.forEach((song, i) => {
+      const li = document.createElement('li');
+      li.className = 'batch-item';
+      li.innerHTML = `
+        <span class="batch-num">${i + 1}</span>
+        <span class="batch-title"></span>
+        <span class="batch-key"></span>
+        <span class="batch-file"></span>
+        <span class="batch-actions">
+          <button type="button" data-act="up" title="Subir" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-act="down" title="Bajar" ${i === songs.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" data-act="remove" title="Quitar">✕</button>
+        </span>`;
+      li.querySelector('.batch-title').textContent = song.title;
+      li.querySelector('.batch-key').textContent = song.key ? `Tono ${song.key}` : '';
+      li.querySelector('.batch-file').textContent = song.name;
+      li.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+        const act = b.dataset.act;
+        if (act === 'remove') songs.splice(i, 1);
+        if (act === 'up' && i > 0) [songs[i - 1], songs[i]] = [songs[i], songs[i - 1]];
+        if (act === 'down' && i < songs.length - 1) [songs[i + 1], songs[i]] = [songs[i], songs[i + 1]];
+        renderBatch();
+      }));
+      batchList.appendChild(li);
+    });
+  }
+
+  batchFiles.addEventListener('change', async (e) => {
+    await addBatchFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  const batchDrop = $('batchDrop');
+  ['dragenter', 'dragover'].forEach((ev) =>
+    batchDrop.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); batchDrop.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach((ev) =>
+    batchDrop.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); batchDrop.classList.remove('dragging'); }));
+  batchDrop.addEventListener('drop', (e) => addBatchFiles(e.dataTransfer.files));
+
+  $('batchClear').addEventListener('click', () => { songs = []; renderBatch(); });
+
+  $('batchPdf').addEventListener('click', () => {
+    if (!songs.length) return;
+    const bookName = $('batchName').value.trim() || 'Cancionero';
+    let html = '';
+    if ($('batchIndex').checked) {
+      html += `<section class="song-page index-page">
+        <div class="title">${esc(bookName)}</div>
+        <div class="sub">${songs.length} canciones</div>
+        <ol class="index-list">${songs.map((s) =>
+          `<li><span>${esc(s.title)}</span>${s.key ? `<em>${esc(s.key)}</em>` : ''}</li>`).join('')}</ol>
+      </section>`;
+    }
+    html += songs.map((s) => `<section class="song-page">${buildSheet(s.cho).html}</section>`).join('');
+    printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2');
+  });
+
+  renderBatch();
 
   updateChordButtons();
 })();

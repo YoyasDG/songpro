@@ -49,6 +49,33 @@ Vamp = {comment: Vamp}
     </div>
   </details>
 
+  <details class="dict batch" id="batchPanel">
+    <summary>Cancionero: varias canciones en un PDF <span id="batchCount"></span></summary>
+    <div class="dict-body">
+      <p>
+        Sube varios <code>.cho</code> (o <code>.txt</code>, que se convierten con tu diccionario).
+        Ordénalos con las flechas y genera un solo PDF, con cada canción en su propia hoja.
+      </p>
+      <div class="batch-drop" id="batchDrop">
+        <ol class="batch-list" id="batchList"></ol>
+      </div>
+      <div class="batch-bar">
+        <label class="btn ghost">Agregar archivos
+          <input id="batchFiles" type="file" accept=".cho,.chordpro,.chopro,.crd,.txt" multiple hidden />
+        </label>
+        <button class="btn ghost" id="batchClear" type="button">Vaciar lista</button>
+        <span class="batch-spacer"></span>
+        <input id="batchName" class="batch-name" type="text" placeholder="Nombre: Cancionero" title="Nombre del cancionero y del PDF" />
+        <label class="batch-check"><input id="batchIndex" type="checkbox" checked /> Índice</label>
+        <select id="batchCols" class="cols" title="Columnas">
+          <option value="1">1 columna</option>
+          <option value="2" selected>2 columnas</option>
+        </select>
+        <button class="btn" id="batchPdf" type="button" disabled>Generar PDF</button>
+      </div>
+    </div>
+  </details>
+
   <main class="panes">
     <div class="pane" id="dropzone">
       <div class="pane-head">
