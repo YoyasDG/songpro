@@ -643,3 +643,41 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* sin modo offline, la app funciona igual */ });
   });
 }
+
+// Botón "Instalar app"
+// - Android / computadora (Chrome, Edge): abre el aviso de instalación del navegador.
+// - iPhone / iPad: Safari no lo permite desde un botón, así que mostramos los pasos.
+// - Si ya está instalada (abierta como app), el botón no aparece.
+(function () {
+  const btn = document.getElementById('installBtn');
+  const guide = document.getElementById('installGuide');
+  if (!btn) return;
+
+  const installed = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (installed) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad con iPadOS
+  let deferredPrompt = null;
+
+  if (isIOS) btn.hidden = false;
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();          // guardamos el aviso para mostrarlo con nuestro botón
+    deferredPrompt = e;
+    btn.hidden = false;
+  });
+
+  btn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if (outcome === 'accepted') btn.hidden = true;
+      return;
+    }
+    if (guide && typeof guide.showModal === 'function') guide.showModal();
+  });
+
+  window.addEventListener('appinstalled', () => { btn.hidden = true; deferredPrompt = null; });
+})();

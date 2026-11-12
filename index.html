@@ -29,7 +29,20 @@
       <h1>SongPro</h1>
       <p>Pega tu canción con los acordes arriba de la letra y te damos el <code>.cho</code> listo para Planning.</p>
     </div>
+    <button class="btn ghost install-btn" id="installBtn" type="button" hidden>Instalar app</button>
   </header>
+
+  <!-- Guía para iPhone/iPad: Safari no permite instalar desde un botón -->
+  <dialog class="install-guide" id="installGuide">
+    <h2>Instala SongPro en tu iPhone</h2>
+    <ol>
+      <li>Toca el botón <strong>Compartir</strong> <span class="ios-share" aria-hidden="true">⬆︎</span> en la barra de Safari.</li>
+      <li>Baja y elige <strong>Agregar a pantalla de inicio</strong>.</li>
+      <li>Toca <strong>Agregar</strong>. Listo: SongPro aparece con su ícono.</li>
+    </ol>
+    <p class="install-note">Tiene que ser desde Safari. En otros navegadores del iPhone, ábrela primero en Safari.</p>
+    <form method="dialog"><button class="btn" type="submit">Entendido</button></form>
+  </dialog>
 
   <section class="meta">
     <label>Título <input id="title" type="text" placeholder="Mi Dios" /></label>
