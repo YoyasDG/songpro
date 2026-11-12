@@ -369,9 +369,11 @@
   // Texto que se imprime: el .cho con el tono final y el capo del PDF.
   // El .cho del editor no cambia.
   function pdfText() {
-    const text = output.value;
-    const key = pdfKey.value;
-    const capo = +pdfCapo.value;
+    return renderFor(output.value, pdfKey.value, +pdfCapo.value);
+  }
+
+  // Aplica "suena en" + capo a cualquier .cho (canción suelta o del cancionero)
+  function renderFor(text, key, capo) {
     if (!text.trim() || (!key && !capo)) return text;
     const info = keyInfo(text);
     if (!info) return text;
@@ -533,10 +535,10 @@
         cho = `{title: ${baseTitle}}\n${cho}`;
         meta = metaOf(cho);
       }
-      songs.push({ name: file.name, cho, ...meta });
+      const info = keyInfo(cho);
+      songs.push({ name: file.name, cho, ...meta, baseKey: info ? info.key : '', sounding: '', capo: 0 });
     }
     renderBatch();
-  updateKeyControls();
     flash(`${files.length} canción${files.length === 1 ? '' : 'es'} agregada${files.length === 1 ? '' : 's'}`);
   }
 
@@ -554,7 +556,10 @@
       li.innerHTML = `
         <span class="batch-num">${i + 1}</span>
         <span class="batch-title"></span>
-        <span class="batch-key"></span>
+        <span class="batch-tp">
+          <label class="key-pick" title="Tono en el que va a sonar (no cambia el archivo)"><span>Suena en</span><select data-tp="key"></select></label>
+          <label class="key-pick" title="Capo: el PDF muestra las figuras que se tocan"><span>Capo</span><select data-tp="capo"></select></label>
+        </span>
         <span class="batch-file"></span>
         <span class="batch-actions">
           <button type="button" data-act="up" title="Subir" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -562,7 +567,24 @@
           <button type="button" data-act="remove" title="Quitar">✕</button>
         </span>`;
       li.querySelector('.batch-title').textContent = song.title;
-      li.querySelector('.batch-key').textContent = song.key ? `Tono ${song.key}` : '';
+      const keySel = li.querySelector('[data-tp="key"]');
+      const capoSel = li.querySelector('[data-tp="capo"]');
+      if (song.baseKey) {
+        const minor = !!Transposer.parseKey(song.baseKey)?.minor;
+        keySel.innerHTML = `<option value="">${keyLabel(song.baseKey)} (original)</option>` +
+          Transposer.keyOptions(minor).map((k) => `<option value="${k}">${keyLabel(k)}</option>`).join('');
+        keySel.value = song.sounding;
+      } else {
+        keySel.innerHTML = '<option value="">—</option>';
+        keySel.disabled = true;
+        capoSel.disabled = true;
+        keySel.title = 'No encontré el tono de esta canción';
+      }
+      capoSel.innerHTML = '<option value="0">No</option>' +
+        Array.from({ length: 9 }, (_, n) => `<option value="${n + 1}">${n + 1}</option>`).join('');
+      capoSel.value = String(song.capo);
+      keySel.addEventListener('change', () => { song.sounding = keySel.value; });
+      capoSel.addEventListener('change', () => { song.capo = +capoSel.value; });
       li.querySelector('.batch-file').textContent = song.name;
       li.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
         const act = b.dataset.act;
@@ -597,15 +619,20 @@
       html += `<section class="song-page index-page">
         <div class="title">${esc(bookName)}</div>
         <div class="sub">${songs.length} canciones</div>
-        <ol class="index-list">${songs.map((s) =>
-          `<li><span>${esc(s.title)}</span>${s.key ? `<em>${esc(s.key)}</em>` : ''}</li>`).join('')}</ol>
+        <ol class="index-list">${songs.map((s) => {
+          const key = s.sounding || s.baseKey;
+          const tag = key ? `${keyLabel(key)}${s.capo ? ` · capo ${s.capo}` : ''}` : '';
+          return `<li><span>${esc(s.title)}</span>${tag ? `<em>${esc(tag)}</em>` : ''}</li>`;
+        }).join('')}</ol>
       </section>`;
     }
-    html += songs.map((s) => `<section class="song-page">${buildSheet(s.cho).html}</section>`).join('');
+    html += songs.map((s) =>
+      `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo)).html}</section>`).join('');
     printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2');
   });
 
   renderBatch();
+  updateKeyControls();
 
   updateChordButtons();
 })();
