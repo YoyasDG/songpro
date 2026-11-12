@@ -11,6 +11,7 @@
 
   let fileBaseName = '';
   let outputEditedByHand = false;
+  let choTargetKey = ''; // tono elegido para el .cho ('' = el original)
   let statusTimer;
 
   function flash(msg) {
@@ -44,11 +45,17 @@
 
   function convert() {
     const text = input.value;
-    output.value = text.trim()
+    let cho = text.trim()
       ? ChordConverter.convertTxt(text, metadata(), modeSel.value, dictBox.value)
       : '';
+    // Si elegiste otro tono para el .cho, se vuelve a aplicar al reconvertir
+    if (cho && choTargetKey) {
+      try { cho = transposeTo(cho, choTargetKey); } catch { choTargetKey = ''; }
+    }
+    output.value = cho;
     outputEditedByHand = false;
     updateChordButtons();
+    updateKeyControls();
     if (!preview.hidden) renderPreview();
   }
 
@@ -145,6 +152,7 @@
   output.addEventListener('input', () => {
     outputEditedByHand = true;
     updateChordButtons();
+    updateKeyControls();
     if (!preview.hidden) renderPreview();
   });
 
@@ -157,6 +165,7 @@
       fileBaseName = file.name;
       if (!$('title').value.trim()) $('title').value = file.name.replace(/\.[^.]+$/, '');
       outputEditedByHand = false;
+      choTargetKey = '';
       convert();
       flash(`Cargado: ${file.name}`);
     };
@@ -179,6 +188,7 @@
     input.value = '';
     fileBaseName = '';
     fields.forEach((f) => (f.value = ''));
+    choTargetKey = '';
     convert();
     input.focus();
   });
@@ -255,7 +265,7 @@
       if (dir) {
         const name = dir[1].toLowerCase();
         const val = dir[2] || '';
-        if (['title', 't', 'author', 'artist', 'key', 'tempo'].includes(name)) { meta[name] = val; continue; }
+        if (['title', 't', 'author', 'artist', 'key', 'tempo', 'capo'].includes(name)) { meta[name] = val; continue; }
         const start = /^(?:start_of_|so)(verse|chorus|bridge|v|c|b)$/.exec(name);
         if (start) {
           close();
@@ -292,7 +302,15 @@
     close();
 
     const title = meta.title || meta.t || '';
-    const sub = [meta.author || meta.artist, meta.key && `Tono: ${meta.key}`, meta.tempo && `Tempo: ${meta.tempo}`]
+    const capo = parseInt(meta.capo, 10) || 0;
+    let keyText = meta.key ? `Tono: ${meta.key}` : '';
+    if (meta.key && capo > 0) {
+      const sounding = Transposer.soundingKey(meta.key, capo) || meta.key;
+      keyText = `Tono: ${sounding} · Capo ${capo} (acordes de ${meta.key})`;
+    } else if (capo > 0) {
+      keyText = `Capo ${capo}`;
+    }
+    const sub = [meta.author || meta.artist, keyText, meta.tempo && `Tempo: ${meta.tempo}`]
       .filter(Boolean).join(' · ');
     const html =
       (title ? `<div class="title">${esc(title)}</div>` : '') +
@@ -302,11 +320,153 @@
   }
 
   function renderPreview() {
-    const sheet = buildSheet(output.value);
+    const sheet = buildSheet(pdfText());
     preview.innerHTML = sheet.empty && !sheet.title
       ? '<div class="sub">Nada que mostrar todavía.</div>'
       : sheet.html;
   }
+
+  // ── Transpositor ──
+  const choKey = $('choKey');
+  const pdfKey = $('pdfKey');
+  const pdfCapo = $('pdfCapo');
+
+  // Tono de un .cho: el de {key:}; si no hay, el primer acorde (casi siempre
+  // es el tono); si tampoco, el que deduzca el transpositor por los acordes.
+  function keyInfo(text) {
+    const d = Transposer.describeSong(text);
+    if (d.key) return { key: d.key, capo: d.capo || 0, guessed: false };
+    const first = /\[([A-G][#b]?)([^\]\/\s]*)/.exec(text.replace(/^\s*\{.*\}\s*$/gm, ''));
+    if (first) {
+      const minor = /^(m|min|mi|-)(?!aj)/.test(first[2]);
+      return { key: first[1] + (minor ? 'm' : ''), capo: d.capo || 0, guessed: true };
+    }
+    if (d.inferred) return { key: d.inferred.key, capo: d.capo || 0, guessed: true };
+    return null;
+  }
+
+  // Inserta {key:} cuando el .cho no lo trae, para que el transpositor parta
+  // del tono correcto (y no de uno que adivine distinto).
+  function withKey(text, info) {
+    if (!info || !info.guessed) return text;
+    const lines = text.split('\n');
+    let at = 0;
+    while (at < lines.length && /^\s*\{\s*(title|t|subtitle|st|author|artist)\s*:/i.test(lines[at])) at += 1;
+    lines.splice(at, 0, `{key: ${info.key}}`);
+    return lines.join('\n');
+  }
+
+  function transposeTo(text, targetKey) {
+    const info = keyInfo(text);
+    if (!info) throw new Error('sin tono');
+    if (Transposer.parseKey(info.key)?.minor !== Transposer.parseKey(targetKey)?.minor) {
+      // mayor ↔ menor no se puede: se usa el relativo con el mismo número de semitonos
+      targetKey = targetKey.endsWith('m') ? targetKey.slice(0, -1) : `${targetKey}m`;
+    }
+    return Transposer.transposeSong(withKey(text, info), { mode: 'key', targetKey }).content;
+  }
+
+  // Texto que se imprime: el .cho con el tono final y el capo del PDF.
+  // El .cho del editor no cambia.
+  function pdfText() {
+    const text = output.value;
+    const key = pdfKey.value;
+    const capo = +pdfCapo.value;
+    if (!text.trim() || (!key && !capo)) return text;
+    const info = keyInfo(text);
+    if (!info) return text;
+    try {
+      return Transposer.applyRenderTarget(withKey(text, info), {
+        soundingKey: key || null,
+        capo,
+      });
+    } catch {
+      return text;
+    }
+  }
+
+  function keyLabel(k) { return k.replace('b', '♭').replace('#', '♯'); }
+
+  function fillKeys(select, info, firstOption) {
+    const minor = !!Transposer.parseKey(info.key)?.minor;
+    const keys = Transposer.keyOptions(minor);
+    const prev = select.value;
+    select.innerHTML = (firstOption ? `<option value="">${firstOption}</option>` : '') +
+      keys.map((k) => `<option value="${k}">${keyLabel(k)}</option>`).join('');
+    return { keys, prev };
+  }
+
+  let lastKeySig = '';
+  function updateKeyControls() {
+    const info = output.value.trim() ? keyInfo(output.value) : null;
+    const sig = info ? `${info.key}|${info.capo}|${info.guessed}` : '';
+    if (sig === lastKeySig) { updatePdfHint(); return; }
+    lastKeySig = sig;
+
+    if (!info) {
+      choKey.innerHTML = '<option>—</option>';
+      choKey.disabled = true;
+      pdfKey.innerHTML = '<option value="">Igual al .cho</option>';
+      updatePdfHint();
+      return;
+    }
+
+    // Selector del .cho: el tono actual seleccionado
+    const { keys } = fillKeys(choKey, info);
+    const current = keys.find((k) => Transposer.pitchClass(Transposer.parseKey(k).tonic) ===
+      Transposer.pitchClass(Transposer.parseKey(info.key).tonic)) || info.key;
+    if (!keys.includes(current)) choKey.insertAdjacentHTML('afterbegin', `<option value="${current}">${keyLabel(current)}</option>`);
+    choKey.value = current;
+    choKey.disabled = false;
+    choKey.title = info.guessed
+      ? `Tono deducido del primer acorde (${info.key}). Si no es correcto, escríbelo en el campo Tono.`
+      : 'Transporta el .cho: lo que descargas queda en este tono';
+    choKey.classList.toggle('guessed', info.guessed);
+
+    // Selector del PDF: "Igual al .cho (G)" + tonos
+    const sounding = info.capo ? (Transposer.soundingKey(info.key, info.capo) || info.key) : info.key;
+    const { prev } = fillKeys(pdfKey, info, `Igual al .cho (${keyLabel(sounding)})`);
+    pdfKey.value = [...pdfKey.options].some((o) => o.value === prev) ? prev : '';
+    updatePdfHint();
+  }
+
+  function updatePdfHint() {
+    const hint = $('pdfHint');
+    const info = output.value.trim() ? keyInfo(output.value) : null;
+    const capo = +pdfCapo.value;
+    if (!info || (!pdfKey.value && !capo)) { hint.textContent = ''; return; }
+    const sounding = pdfKey.value || (info.capo ? Transposer.soundingKey(info.key, info.capo) : info.key);
+    if (capo) {
+      const shapes = Transposer.describeSong(pdfText()).key || '';
+      hint.textContent = `Suena en ${keyLabel(sounding)} · tocas acordes de ${keyLabel(shapes)} con capo en el traste ${capo}`;
+    } else {
+      hint.textContent = `El PDF sale en ${keyLabel(sounding)} · el .cho se queda en ${keyLabel(info.key)}`;
+    }
+  }
+
+  // 1) Transportar el .cho (cambia el archivo que descargas)
+  choKey.addEventListener('change', () => {
+    const target = choKey.value;
+    try {
+      const next = transposeTo(output.value, target);
+      output.value = next;
+      choTargetKey = target;
+      lastChordKey = '';
+      updateChordButtons();
+      updateKeyControls();
+      if (!preview.hidden) renderPreview();
+      flash(`.cho transportado a ${keyLabel(target)}`);
+    } catch {
+      flash('No pude detectar el tono: escríbelo en el campo Tono');
+      updateKeyControls();
+    }
+  });
+
+  // 2 y 3) Tono final y capo solo para el PDF
+  [pdfKey, pdfCapo].forEach((el) => el.addEventListener('change', () => {
+    updatePdfHint();
+    if (!preview.hidden) renderPreview();
+  }));
 
   // ── PDF: hoja de impresión + "Guardar como PDF" del navegador ──
   const printSheet = $('printSheet');
@@ -325,10 +485,12 @@
 
   $('pdf').addEventListener('click', () => {
     if (!output.value.trim()) return flash('Primero pega o abre una canción');
-    const sheet = buildSheet(output.value);
+    const sheet = buildSheet(pdfText());
+    const capo = +pdfCapo.value;
+    const extra = [pdfKey.value, capo ? `capo ${capo}` : ''].filter(Boolean).join(' ');
     printHtml(
       `<section class="song-page">${sheet.html}</section>`,
-      ChordConverter.sanitizeBaseName($('title').value || sheet.title || fileBaseName || 'cancion'),
+      ChordConverter.sanitizeBaseName(`${$('title').value || sheet.title || fileBaseName || 'cancion'} ${extra}`),
       $('pdfCols').value === '2',
     );
   });
@@ -374,6 +536,7 @@
       songs.push({ name: file.name, cho, ...meta });
     }
     renderBatch();
+  updateKeyControls();
     flash(`${files.length} canción${files.length === 1 ? '' : 'es'} agregada${files.length === 1 ? '' : 's'}`);
   }
 
