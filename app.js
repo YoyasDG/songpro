@@ -236,12 +236,20 @@
     return `<div class="line${chordsOnly ? ' chords-only' : ''}">${html}</div>`;
   }
 
-  function renderPreview() {
+  // Convierte el .cho en HTML de hoja de canción. Cada sección (etiqueta +
+  // sus líneas) va en un bloque .blk para que al imprimir no se parta.
+  function buildSheet(text) {
     const meta = {};
-    let html = '';
-    let inSection = false;
+    const blocks = [];
+    let current = null;
 
-    for (const raw of output.value.split('\n')) {
+    const close = () => {
+      if (current && current.body) blocks.push(current);
+      current = null;
+    };
+    const ensure = () => { if (!current) current = { cls: 'blk', body: '' }; };
+
+    for (const raw of text.split('\n')) {
       const line = raw.trimEnd();
       const dir = /^\s*\{\s*([\w_]+)\s*(?::\s*(.*?))?\s*\}\s*$/.exec(line);
       if (dir) {
@@ -250,33 +258,63 @@
         if (['title', 't', 'author', 'artist', 'key', 'tempo'].includes(name)) { meta[name] = val; continue; }
         const start = /^(?:start_of_|so)(verse|chorus|bridge|v|c|b)$/.exec(name);
         if (start) {
+          close();
           const k = { v: 'verse', c: 'chorus', b: 'bridge' }[start[1]] || start[1];
-          html += `<div class="section"><div class="section-label">${esc(val || SECTION_NAMES[k])}</div>`;
-          inSection = true;
+          current = { cls: 'blk section', body: `<div class="section-label">${esc(val || SECTION_NAMES[k])}</div>` };
           continue;
         }
-        if (/^(?:end_of_|eo)(verse|chorus|bridge|v|c|b)$/.test(name)) {
-          if (inSection) html += '</div>';
-          inSection = false;
-          continue;
-        }
+        if (/^(?:end_of_|eo)(verse|chorus|bridge|v|c|b)$/.test(name)) { close(); continue; }
         if (['comment', 'c', 'comment_italic', 'ci'].includes(name)) {
-          html += `<div class="comment">${esc(val)}</div>`;
+          close();
+          current = { cls: 'blk', body: `<div class="comment">${esc(val)}</div>` };
           continue;
         }
         continue;
       }
-      html += line.trim() === '' ? '<div class="blank"></div>' : renderLine(line);
+      if (line.trim() === '') {
+        // una línea vacía cierra el bloque, salvo justo después de una etiqueta
+        if (current && !current.hasLines) continue;
+        close();
+        continue;
+      }
+      ensure();
+      current.body += renderLine(line);
+      current.hasLines = true;
     }
-    if (inSection) html += '</div>';
+    close();
 
-    const title = meta.title || meta.t;
+    const title = meta.title || meta.t || '';
     const sub = [meta.author || meta.artist, meta.key && `Tono: ${meta.key}`, meta.tempo && `Tempo: ${meta.tempo}`]
       .filter(Boolean).join(' · ');
-    preview.innerHTML =
+    const html =
       (title ? `<div class="title">${esc(title)}</div>` : '') +
       (sub ? `<div class="sub">${esc(sub)}</div>` : '') +
-      (html || '<div class="sub">Nada que mostrar todavía.</div>');
+      `<div class="song">${blocks.map((b) => `<div class="${b.cls}">${b.body}</div>`).join('')}</div>`;
+    return { title, html, empty: blocks.length === 0 };
   }
+
+  function renderPreview() {
+    const sheet = buildSheet(output.value);
+    preview.innerHTML = sheet.empty && !sheet.title
+      ? '<div class="sub">Nada que mostrar todavía.</div>'
+      : sheet.html;
+  }
+
+  // ── PDF: hoja de impresión + "Guardar como PDF" del navegador ──
+  const printSheet = $('printSheet');
+  $('pdf').addEventListener('click', () => {
+    if (!output.value.trim()) return flash('Primero pega o abre una canción');
+    const sheet = buildSheet(output.value);
+    printSheet.innerHTML = sheet.html;
+    printSheet.classList.toggle('two-cols', $('pdfCols').value === '2');
+    const previousTitle = document.title;
+    // El navegador usa el título de la página como nombre del PDF
+    document.title = ChordConverter.sanitizeBaseName($('title').value || sheet.title || fileBaseName || 'cancion');
+    const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    window.print();
+    setTimeout(restore, 1000);
+  });
+
   updateChordButtons();
 })();

@@ -78,6 +78,11 @@ Santo Santo es Él
         </div>
         <div class="actions">
           <button class="btn ghost" id="copy" type="button">Copiar</button>
+          <select id="pdfCols" class="cols" title="Columnas del PDF">
+            <option value="1">1 columna</option>
+            <option value="2">2 columnas</option>
+          </select>
+          <button class="btn ghost" id="pdf" type="button" title="Abre la impresión: elige “Guardar como PDF”">PDF</button>
           <button class="btn" id="download" type="button">Descargar .cho</button>
         </div>
       </div>
@@ -107,6 +112,9 @@ Santo Santo es Él
     <span id="status"></span>
     <span>Todo corre en tu navegador · nada se sube a ningún servidor</span>
   </footer>
+
+  <!-- Hoja que se imprime al presionar PDF (oculta en pantalla) -->
+  <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
 
   <script src="converter.js"></script>
   <script src="app.js"></script>

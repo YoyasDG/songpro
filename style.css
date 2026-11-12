@@ -338,6 +338,7 @@ textarea::placeholder { color: var(--ink-muted); }
 }
 .preview .l { min-height: 22px; }
 .preview .chords-only .seg { margin-right: var(--space-3); }
+.preview .chords-only .l { display: none; }
 .preview .title {
   font-family: var(--font-display);
   font-weight: 600;
@@ -352,7 +353,7 @@ textarea::placeholder { color: var(--ink-muted); }
   width: fit-content;
   align-items: center;
   gap: 6px;
-  margin: var(--space-4) 0 var(--space-2);
+  margin: 0 0 var(--space-2);
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--straw-soft);
@@ -389,3 +390,122 @@ textarea::placeholder { color: var(--ink-muted); }
   color: var(--ink-muted);
 }
 #status { color: var(--teal-ink); font-weight: 600; }
+
+/* Selector de columnas junto al botón PDF */
+.cols {
+  font: 600 13px/18px var(--font-sans);
+  color: var(--ink);
+  background: var(--surface-100);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-2);
+}
+
+/* Bloques de la hoja (vista previa y PDF) */
+.preview .blk, .print-sheet .blk { margin-bottom: var(--space-4); }
+
+/* ── Impresión / PDF ── */
+.print-sheet { display: none; }
+
+@page {
+  size: letter;
+  margin: 14mm 14mm 16mm;
+}
+
+@media print {
+  :root {
+    /* Siempre en Día: tinta oscura sobre papel */
+    --ink: #2a211c;
+    --ink-muted: #5f554c;
+    --chambray: #8fa9d6;
+    --chambray-ink: #3d5f9e;
+    --straw-soft: #f3ead6;
+    --straw-ink: #7a581b;
+  }
+
+  html, body {
+    height: auto;
+    background: #fff !important;
+    padding: 0;
+    margin: 0;
+    display: block;
+  }
+  body > *:not(.print-sheet) { display: none !important; }
+
+  .print-sheet {
+    display: block;
+    color: var(--ink);
+    font: 400 12pt/1.35 var(--font-sans);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-sheet .title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 24pt;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 2pt;
+  }
+  .print-sheet .sub {
+    color: var(--ink-muted);
+    font-size: 10pt;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+    border-bottom: 1.5pt solid var(--chambray);
+  }
+  .print-sheet.two-cols .song {
+    column-count: 2;
+    column-gap: 12mm;
+    column-rule: 0.5pt solid #ddd5c8;
+  }
+  .print-sheet .blk {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 10pt;
+  }
+  .print-sheet .line { display: flex; flex-wrap: wrap; align-items: flex-end; break-inside: avoid; }
+  .print-sheet .seg { display: inline-flex; flex-direction: column; white-space: pre; }
+  .print-sheet .c {
+    color: var(--chambray-ink);
+    font: 700 10pt/1.2 var(--font-mono);
+    min-height: 1.2em;
+    padding-right: 2pt;
+  }
+  .print-sheet .l { min-height: 1.35em; }
+  .print-sheet .chords-only .seg { margin-right: 9pt; }
+  .print-sheet .chords-only .l { display: none; }
+  /* En 2 columnas: letra un poco más chica y sin partir líneas */
+  .print-sheet.two-cols { font-size: 10.5pt; }
+  .print-sheet.two-cols .c { font-size: 9pt; }
+  .print-sheet.two-cols .line { flex-wrap: nowrap; }
+  .print-sheet .comment {
+    display: flex;
+    width: fit-content;
+    align-items: center;
+    gap: 5pt;
+    margin: 0 0 4pt;
+    padding: 2pt 8pt;
+    border-radius: 999px;
+    background: var(--straw-soft);
+    color: var(--straw-ink);
+    font: 600 8.5pt/1.3 var(--font-sans);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    break-after: avoid;
+  }
+  .print-sheet .comment::before {
+    content: "";
+    width: 4pt;
+    height: 4pt;
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .print-sheet .section { border-left: 2pt solid var(--chambray); padding-left: 8pt; }
+  .print-sheet .section-label {
+    color: var(--chambray-ink);
+    font: 600 8.5pt/1.3 var(--font-sans);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+}
