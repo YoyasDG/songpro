@@ -271,7 +271,7 @@
     '^\\s*[\\[(]?\\s*' +
       '(?:(?<ord>' + ORDINAL_PATTERN + ')\\s+(?<parte>parte|part)' +
       '|(?<num1>\\d+)\\s*(?:a|o|º|ª)?\\s+(?<alias1>' + ALIAS_PATTERN + ')(?![a-z])' +
-      '|(?<alias>' + ALIAS_PATTERN + ')(?![a-z])(?:\\s*(?<num>\\d+))?)' +
+      '|(?<alias>' + ALIAS_PATTERN + ')(?![a-z])(?:\\s*(?<num>\\d+)(?!\\s*(?:x|veces|vezes|times)(?![a-z])))?)' +
       '\\s*[\\])]?\\s*(?:[:.\\-–]\\s*)?(?<rest>.*)$',
   );
 
@@ -342,11 +342,54 @@
     return map;
   }
 
+  // "[Estribillo Final]", "[Refrão 2x]", "[Vamp]" ... (estilo Cifra Club):
+  // una línea que empieza con [texto] y ese texto no es un acorde.
+  const BRACKET_LABEL_RE = /^\s*\[([^\]]+)\]\s*(.*)$/;
+
+  function labelFromText(inner) {
+    const text = inner.trim().replace(/\s*[:.\-–]\s*$/, '');
+    const parsed = parseLabelLine(text);
+    if (parsed) {
+      const base = parsed.number ? `${parsed.name} ${parsed.number}` : parsed.name;
+      const rest = parsed.rest.trim();
+      if (!rest) return base;
+      const repeat = REPEAT_RE.exec(rest);
+      if (repeat) return `${base} x${repeat.slice(1).find(Boolean)}`;
+      // calificador extra: "Final", "(Variación)", etc.
+      return `${base} ${rest[0].toUpperCase()}${rest.slice(1)}`;
+    }
+    return text[0].toUpperCase() + text.slice(1);
+  }
+
+  function convertBracketLabel(line) {
+    const m = BRACKET_LABEL_RE.exec(line);
+    if (!m) return null;
+    const inner = m[1].trim();
+    if (!inner || CHORD_TOKEN_RE.test(inner)) return null; // [A] es acorde, no etiqueta
+    if (!/[\p{L}]{2,}/u.test(inner)) return null;          // necesita al menos una palabra
+
+    const rest = m[2];
+    const label = labelFromText(inner);
+    if (!rest.trim()) return { kind: 'label', lines: [`{comment: ${label}}`] };
+
+    const repeat = REPEAT_RE.exec(rest.trim());
+    if (repeat) return { kind: 'label', lines: [`{comment: ${label} x${repeat.slice(1).find(Boolean)}}`] };
+
+    const extracted = extractChords(rest);
+    if (extracted.isChordLine) {
+      return { kind: 'label', lines: [`{comment: ${label}}`, formatChordOnlyLine(extracted.chords)] };
+    }
+    return null; // "[algo] seguido de letra": no tocar
+  }
+
   function convertSpecialLine(line, dictionary) {
     if (dictionary && dictionary.size && !isBlankLine(line)) {
       const custom = dictionary.get(dictKey(line));
       if (custom) return { kind: 'label', lines: [custom] };
     }
+
+    const bracketed = convertBracketLabel(line);
+    if (bracketed) return bracketed;
 
     const parsed = parseLabelLine(line);
     if (!parsed) return { kind: 'none', lines: [] };
@@ -390,14 +433,42 @@
       if (sourceLineLength !== undefined) sourceLineLength = Math.max(1, sourceLineLength - indent);
     }
 
-    const line = options.mode === 'strict'
-      ? alignChordLineStrict(shifted, lyric)
-      : alignChordLineMusical(shifted, lyric, { sourceLineLength }).line;
-    return line.trimEnd();
+    // Acordes que caen después de que termina la letra (p. ej. "Te quiero"
+    // seguido de D Bm G A): no se amontonan en la última palabra, se ponen
+    // al final respetando la separación que traían.
+    const lyricEnd = lyric.trimEnd().length;
+    const inside = shifted.filter((c) => c.index < lyricEnd);
+    const trailing = shifted
+      .filter((c) => c.index >= lyricEnd)
+      .sort((a, b) => a.index - b.index || a.order - b.order);
+
+    let line = inside.length
+      ? (options.mode === 'strict'
+        ? alignChordLineStrict(inside, lyric)
+        : alignChordLineMusical(inside, lyric, { sourceLineLength }).line)
+      : lyric;
+    line = line.trimEnd();
+
+    let prevEnd = lyricEnd;
+    for (const c of trailing) {
+      const gap = Math.max(1, c.index - prevEnd);
+      line += ' '.repeat(gap) + `[${c.chord}]`;
+      prevEnd = c.index + c.chord.length;
+    }
+    return line;
+  }
+
+  // Caracteres invisibles que se cuelan al copiar de páginas web (Cifra Club
+  // pone un espacio de ancho cero U+200B al inicio de cada línea). Se quitan,
+  // y los espacios "raros" (no separables, etc.) se vuelven espacios normales.
+  function cleanInvisible(text) {
+    return text
+      .replace(/[​‌‍⁠﻿­]/g, '')
+      .replace(/[  -   　]/g, ' ');
   }
 
   function parseSong(text, options = {}) {
-    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const lines = cleanInvisible(text).replace(/\r\n?/g, '\n').split('\n');
     const output = [];
     const dictionary = options.dictionary instanceof Map
       ? options.dictionary
@@ -462,7 +533,7 @@
   // ───────────────────────── metadata (songService.ts) ─────────────────────────
 
   function normalizeText(content) {
-    return content.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+    return cleanInvisible(content).replace(/\r\n?/g, '\n');
   }
 
   function applyMetadata(content, metadata = {}) {
