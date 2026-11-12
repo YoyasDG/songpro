@@ -446,3 +446,10 @@
 
   updateChordButtons();
 })();
+
+// App instalable: guarda los archivos para poder abrir SongPro sin internet.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* sin modo offline, la app funciona igual */ });
+  });
+}
