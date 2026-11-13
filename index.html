@@ -93,6 +93,7 @@ Vamp = {comment: Vamp}
         <span class="batch-spacer"></span>
         <input id="batchName" class="batch-name" type="text" placeholder="Nombre: Cancionero" title="Nombre del cancionero y del PDF" />
         <label class="batch-check"><input id="batchIndex" type="checkbox" checked /> Índice</label>
+        <label class="batch-check" title="Acordes como grados de la escala (Nashville)"><input id="batchNumbers" type="checkbox" /> Números</label>
         <select id="batchCols" class="cols" title="Columnas">
           <option value="1">1 columna</option>
           <option value="2" selected>2 columnas</option>
@@ -176,6 +177,13 @@ Santo Santo es Él
             <option value="1">1</option><option value="2">2</option><option value="3">3</option>
             <option value="4">4</option><option value="5">5</option><option value="6">6</option>
             <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+          </select>
+        </label>
+        <label class="key-pick" title="Números Nashville: los acordes se muestran como grados de la escala (1, 4, 5, 6m…). Solo el PDF; el .cho no cambia.">
+          <span>Notación</span>
+          <select id="pdfNotation">
+            <option value="acordes">Acordes</option>
+            <option value="numeros">Números</option>
           </select>
         </label>
         <select id="pdfCols" class="cols" title="Columnas del PDF">

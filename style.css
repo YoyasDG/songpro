@@ -631,6 +631,9 @@ textarea::placeholder { color: var(--ink-muted); }
   .install-btn { grid-column: 1 / -1; margin-left: 0; width: 100%; justify-content: center; }
 }
 
+/* Números Nashville: extensión en superíndice (5⁷) */
+.preview .c sup, .print-sheet .c sup { font-size: 0.72em; line-height: 0; vertical-align: 0.45em; margin-left: 1px; }
+
 /* ── Impresión / PDF ── */
 .print-sheet { display: none; }
 

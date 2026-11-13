@@ -297,6 +297,14 @@
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const SECTION_NAMES = { verse: 'Verso', chorus: 'Coro', bridge: 'Puente' };
 
+  // En números Nashville la extensión viene marcada con ^ ("5^7") y se
+  // muestra como superíndice para que no se lea "57".
+  function chordHtml(chord) {
+    const m = /^([^^]*)\^([^/]*)(\/.*)?$/.exec(chord);
+    if (!m) return esc(chord);
+    return `${esc(m[1])}<sup>${esc(m[2])}</sup>${esc(m[3] || '')}`;
+  }
+
   function renderLine(line) {
     const parts = line.split(/\[([^\]]*)\]/);
     // parts: [texto, acorde, texto, acorde, texto...]
@@ -306,7 +314,7 @@
     if (parts[0]) html += `<span class="seg"><span class="c"></span><span class="l">${esc(parts[0])}</span></span>`;
     for (let i = 1; i < parts.length; i += 2) {
       const lyric = chordsOnly ? '' : parts[i + 1] || '';
-      html += `<span class="seg"><span class="c">${esc(parts[i])}</span><span class="l">${esc(lyric) || (chordsOnly ? '' : '&nbsp;')}</span></span>`;
+      html += `<span class="seg"><span class="c">${chordHtml(parts[i])}</span><span class="l">${esc(lyric) || (chordsOnly ? '' : '&nbsp;')}</span></span>`;
     }
     return `<div class="line${chordsOnly ? ' chords-only' : ''}">${html}</div>`;
   }
@@ -330,7 +338,7 @@
       if (dir) {
         const name = dir[1].toLowerCase();
         const val = dir[2] || '';
-        if (['title', 't', 'author', 'artist', 'key', 'tempo', 'capo'].includes(name)) { meta[name] = val; continue; }
+        if (['title', 't', 'author', 'artist', 'key', 'tempo', 'capo', 'x_songpro_numeros'].includes(name)) { meta[name] = val; continue; }
         const start = /^(?:start_of_|so)(verse|chorus|bridge|v|c|b)$/.exec(name);
         if (start) {
           close();
@@ -375,6 +383,7 @@
     } else if (capo > 0) {
       keyText = `Capo ${capo}`;
     }
+    if (meta.x_songpro_numeros) keyText += `${keyText ? ' · ' : ''}En números (Nashville)`;
     const sub = [meta.author || meta.artist, keyText, meta.tempo && `Tempo: ${meta.tempo}`]
       .filter(Boolean).join(' · ');
     const html =
@@ -434,22 +443,76 @@
   // Texto que se imprime: el .cho con el tono final y el capo del PDF.
   // El .cho del editor no cambia.
   function pdfText() {
-    return renderFor(output.value, pdfKey.value, +pdfCapo.value);
+    return renderFor(output.value, pdfKey.value, +pdfCapo.value, $('pdfNotation').value === 'numeros');
   }
 
-  // Aplica "suena en" + capo a cualquier .cho (canción suelta o del cancionero)
-  function renderFor(text, key, capo) {
-    if (!text.trim() || (!key && !capo)) return text;
+  // Aplica "suena en" + capo (y, si se pide, números Nashville) a cualquier
+  // .cho, de la canción suelta o del cancionero. El .cho original no cambia.
+  function renderFor(text, key, capo, numeros = false) {
+    if (!text.trim()) return text;
+    let result = text;
+    if (key || capo) {
+      const info = keyInfo(text);
+      if (info) {
+        try {
+          result = Transposer.applyRenderTarget(withKey(text, info), { soundingKey: key || null, capo });
+        } catch { result = text; }
+      }
+    }
+    return numeros ? toNashville(result) : result;
+  }
+
+  // ── Números Nashville (grados de la escala) ──
+  // En G: G=1, Am=2m, Bm=3m, C=4, D=5, Em=6m, F#°=7°. Fuera de la escala
+  // lleva ♭/♯ (F en G = ♭7). D/F# = 5/7. En tono menor el 1 es el menor
+  // (en Am: Am=1m, C=♭3, G=♭7).
+  const LETTERS = 'CDEFGAB';
+  const NATURAL_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+
+  function noteToDegree(letter, acc, tonic) {
+    const pc = (NATURAL_PC[letter] + (acc === '#' ? 1 : acc === 'b' ? -1 : 0) + 12) % 12;
+    const step = (LETTERS.indexOf(letter) - LETTERS.indexOf(tonic.letter) + 7) % 7;
+    const expected = (tonic.pc + tonic.steps[step]) % 12;
+    const diff = (pc - expected + 12) % 12;
+    const mark = diff === 0 ? '' : diff === 1 ? '♯' : diff === 11 ? '♭' : diff === 2 ? '𝄪' : diff === 10 ? '𝄫' : null;
+    if (mark !== null) return `${mark}${step + 1}`;
+    // nota rara (p. ej. E# escrito a mano): por semitonos
+    const BY_SEMITONE = ['1', '♭2', '2', '♭3', '3', '4', '♯4', '5', '♭6', '6', '♭7', '7'];
+    return BY_SEMITONE[(pc - tonic.pc + 12) % 12];
+  }
+
+  function chordToNashville(chord, tonic) {
+    const m = /^([A-G])([#b]?)(.*?)(?:\/([A-G])([#b]?))?$/.exec(chord);
+    if (!m) return chord; // N.C., %, etc.
+    const [, letter, acc, suffix, bassLetter, bassAcc] = m;
+    const degree = noteToDegree(letter, acc, tonic);
+    // separar calidad (m, °, ø, +) de la extensión (7, maj7, sus4...)
+    const q = /^(m(?!aj)|min|mi|-|°|º|dim|ø|\+|aug)?(.*)$/.exec(suffix);
+    const qualityMap = { m: 'm', min: 'm', mi: 'm', '-': 'm', '°': '°', 'º': '°', dim: '°', 'ø': 'ø', '+': '+', aug: '+' };
+    const quality = q[1] ? qualityMap[q[1]] : '';
+    const ext = q[2];
+    const bass = bassLetter ? `/${noteToDegree(bassLetter, bassAcc, tonic)}` : '';
+    return `${degree}${quality}${ext ? `^${ext}` : ''}${bass}`;
+  }
+
+  function toNashville(text) {
     const info = keyInfo(text);
     if (!info) return text;
-    try {
-      return Transposer.applyRenderTarget(withKey(text, info), {
-        soundingKey: key || null,
-        capo,
-      });
-    } catch {
-      return text;
-    }
+    const k = /^([A-G])([#b]?)(m?)/.exec(info.key);
+    if (!k) return text;
+    const tonic = {
+      letter: k[1],
+      pc: (NATURAL_PC[k[1]] + (k[2] === '#' ? 1 : k[2] === 'b' ? -1 : 0) + 12) % 12,
+      // las alteraciones se cuentan contra la escala mayor del tono, también
+      // en menor: en Am, C = ♭3, F = ♭6, G = ♭7 (convención "1m")
+      steps: MAJOR_STEPS,
+    };
+    const lines = withKey(text, info).split('\n').map((line) => {
+      if (/^\s*\{.*\}\s*$/.test(line) || /^\s*#/.test(line)) return line;
+      return line.replace(/\[([^\]]+)\]/g, (_, c) => `[${chordToNashville(c.trim(), tonic)}]`);
+    });
+    return `{x_songpro_numeros: on}\n${lines.join('\n')}`;
   }
 
   function keyLabel(k) { return k.replace('b', '♭').replace('#', '♯'); }
@@ -530,7 +593,7 @@
   });
 
   // 2 y 3) Tono final y capo solo para el PDF
-  [pdfKey, pdfCapo].forEach((el) => el.addEventListener('change', () => {
+  [pdfKey, pdfCapo, $('pdfNotation')].forEach((el) => el.addEventListener('change', () => {
     updatePdfHint();
     if (!preview.hidden) renderPreview();
   }));
@@ -554,7 +617,8 @@
     if (!output.value.trim()) return flash('Primero pega o abre una canción');
     const sheet = buildSheet(pdfText());
     const capo = +pdfCapo.value;
-    const extra = [pdfKey.value, capo ? `capo ${capo}` : ''].filter(Boolean).join(' ');
+    const extra = [pdfKey.value, capo ? `capo ${capo}` : '', $('pdfNotation').value === 'numeros' ? 'numeros' : '']
+      .filter(Boolean).join(' ');
     printHtml(
       `<section class="song-page">${sheet.html}</section>`,
       ChordConverter.sanitizeBaseName(`${$('title').value || sheet.title || fileBaseName || 'cancion'} ${extra}`),
@@ -692,7 +756,7 @@
       </section>`;
     }
     html += songs.map((s) =>
-      `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo)).html}</section>`).join('');
+      `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo, $('batchNumbers').checked)).html}</section>`).join('');
     printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2');
   });
 
