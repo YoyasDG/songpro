@@ -4,7 +4,7 @@
  * nueva (así los cambios que subas a GitHub se ven de inmediato) y se guarda
  * una copia; si no hay conexión, se usa la copia guardada.
  */
-const CACHE = 'songpro-v4';
+const CACHE = 'songpro-v5';
 const CORE = [
   './',
   './index.html',

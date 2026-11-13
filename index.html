@@ -155,7 +155,14 @@ Santo Santo es Él
         <div class="chord-buttons" id="chordButtons"></div>
         <input id="customChord" type="text" placeholder="Otro…" title="Escribe un acorde y presiona Enter" />
       </div>
-      <textarea id="output" spellcheck="false" placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
+      <div class="code" id="codeWrap">
+        <div class="gutter" aria-hidden="true"><div class="gutter-inner" id="gutter"></div></div>
+        <div class="code-area">
+          <pre class="code-hl" aria-hidden="true"><code id="codeHl"></code></pre>
+          <textarea id="output" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"
+            placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
+        </div>
+      </div>
       <div id="preview" class="preview" hidden></div>
       <div class="pdfbar" id="pdfbar">
         <label class="key-pick" title="Tono en el que va a sonar la canción (no cambia el .cho)">

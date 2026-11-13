@@ -78,7 +78,72 @@
       .map(([chord]) => chord);
   }
 
+  // ── Editor estilo código: números de línea + colores ChordPro ──
+  // El color va en una capa <pre> detrás del textarea (que tiene el texto
+  // transparente); así copiar, deshacer y los botones siguen igual.
+  const codeHl = $('codeHl');
+  const gutter = $('gutter');
+  const hlPre = codeHl.parentElement;
+  let lastLineCount = -1;
+
+  const escHtml = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const DIRECTIVE_RE = /^(\s*)\{(\s*)([^:}\s]+)(\s*)(?:(:)(\s*)(.*?))?(\s*)\}(\s*)$/;
+  const SECTION_DIRECTIVES = /^(comment|c|comment_italic|ci|comment_box|cb|start_of_\w+|end_of_\w+|so\w|eo\w)$/i;
+
+  function highlightLine(line) {
+    const d = DIRECTIVE_RE.exec(line);
+    if (d) {
+      const [, lead, sp1, name, sp2, colon, sp3, value, sp4, trail] = d;
+      const isSection = SECTION_DIRECTIVES.test(name);
+      return `${lead}<span class="t-brace">{</span>${sp1}<span class="t-dir">${escHtml(name)}</span>${sp2}` +
+        (colon ? `<span class="t-brace">:</span>${sp3}<span class="${isSection ? 't-sec' : 't-val'}">${escHtml(value)}</span>` : '') +
+        `${sp4}<span class="t-brace">}</span>${trail}`;
+    }
+    if (/^\s*#/.test(line)) return `<span class="t-note">${escHtml(line)}</span>`;
+    let html = '';
+    let last = 0;
+    for (const m of line.matchAll(/\[([^\]]*)\]/g)) {
+      html += escHtml(line.slice(last, m.index));
+      html += `<span class="t-br">[</span><span class="t-ch">${escHtml(m[1])}</span><span class="t-br">]</span>`;
+      last = m.index + m[0].length;
+    }
+    return html + escHtml(line.slice(last));
+  }
+
+  function currentLine() {
+    return output.value.slice(0, output.selectionStart).split('\n').length;
+  }
+
+  function syncCode() {
+    const lines = output.value.split('\n');
+    // espacio extra al final para que el <pre> mida igual que el textarea
+    codeHl.innerHTML = lines.map(highlightLine).join('\n') + '\n ';
+    if (lines.length !== lastLineCount) {
+      lastLineCount = lines.length;
+      gutter.innerHTML = lines.map((_, i) => `<span>${i + 1}</span>`).join('');
+    }
+    markActiveLine();
+    syncScroll();
+  }
+
+  function markActiveLine() {
+    const n = document.activeElement === output ? currentLine() : 0;
+    gutter.querySelectorAll('.active').forEach((el) => el.classList.remove('active'));
+    if (n) gutter.children[n - 1]?.classList.add('active');
+  }
+
+  function syncScroll() {
+    hlPre.scrollTop = output.scrollTop;
+    hlPre.scrollLeft = output.scrollLeft;
+    gutter.style.transform = `translateY(${-output.scrollTop}px)`;
+  }
+
+  output.addEventListener('scroll', syncScroll);
+  ['keyup', 'click', 'focus', 'blur'].forEach((ev) => output.addEventListener(ev, markActiveLine));
+  document.addEventListener('selectionchange', () => { if (document.activeElement === output) markActiveLine(); });
+
   function updateChordButtons() {
+    syncCode();
     const chords = songChords();
     const key = chords.join('|');
     if (key === lastChordKey) return; // evitar redibujar en cada tecla
@@ -223,7 +288,7 @@
       document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
       const showPreview = tab.dataset.tab === 'preview';
       preview.hidden = !showPreview;
-      output.hidden = showPreview;
+      $('codeWrap').hidden = showPreview;
       $('quickbar').hidden = showPreview;
       if (showPreview) renderPreview();
     }));
