@@ -203,12 +203,12 @@
     return chords.map((t) => `[${t.chord}]`).join(' ');
   }
 
-  // Acordes opcionales o de paso entre paréntesis: "(E)", o "(E D)" en dos
-  // fichas "(E" y "D)". Devuelve el acorde con sus paréntesis: "(E)", "(D)".
+  // Acordes de arreglo rápido entre paréntesis: "(E)", o "(E D)" en dos
+  // fichas "(E" y "D)". Se quitan los paréntesis y quedan como acorde normal.
   function parseChordToken(text) {
-    if (CHORD_TOKEN_RE.test(text)) return text;
+    if (CHORD_TOKEN_RE.test(text)) return { chord: text, paren: false };
     const m = /^\(?([^()]+?)\)?$/.exec(text);
-    if (m && m[1] !== text && CHORD_TOKEN_RE.test(m[1]) && !/^[xX%]$/.test(m[1])) return `(${m[1]})`;
+    if (m && m[1] !== text && CHORD_TOKEN_RE.test(m[1]) && !/^[xX%]$/.test(m[1])) return { chord: m[1], paren: true };
     return null;
   }
 
@@ -231,8 +231,8 @@
     for (const match of expanded.matchAll(/\S+/g)) {
       const text = match[0];
       const index = match.index ?? 0;
-      const chord = parseChordToken(text);
-      if (chord) tokens.push({ chord, index, order, width: text.length });
+      const parsed = parseChordToken(text);
+      if (parsed) tokens.push({ chord: parsed.chord, paren: parsed.paren, index, order, width: text.length });
       order += 1;
     }
     return {
@@ -445,8 +445,8 @@
       if (sourceLineLength !== undefined) sourceLineLength = Math.max(1, sourceLineLength - indent);
     }
 
-    // Acordes entre paréntesis pegados a otro ("G (E D)" = G y luego E, D de
-    // paso): no se reparten por columna, van junto al acorde anterior.
+    // Acordes que venían entre paréntesis pegados a otro ("G (E D)" = G y
+    // luego E, D rápido): no se reparten por columna, van junto al anterior.
     const GLUE = '\u0001';
     const glued = new Map();
     {
@@ -454,7 +454,7 @@
       for (const c of [...shifted].sort((a, b) => a.index - b.index || a.order - b.order)) {
         const prev = main[main.length - 1];
         const prevEnd = prev ? prev.index + (prev.width ?? prev.chord.length) : -Infinity;
-        if (prev && c.chord.startsWith('(') && c.index - prevEnd <= 1) {
+        if (prev && c.paren && c.index - prevEnd <= 1) {
           if (!glued.has(prev.key)) glued.set(prev.key, { chord: prev.chord, extra: [] });
           glued.get(prev.key).extra.push(c.chord);
           prev.width = c.index + (c.width ?? c.chord.length) - prev.index;
