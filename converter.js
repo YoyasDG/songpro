@@ -188,7 +188,9 @@
   // ───────────────────────── parser ─────────────────────────
 
   const CHORD_ROOT = String.raw`[A-G](?:#|b)?`;
-  const CHORD_SUFFIX = String.raw`(?:maj7|maj9|maj11|maj13|maj|min7|min9|min11|min13|min|mmaj7|m7b5|m6|m7|m9|m11|m13|m|dim7|dim9|dim|aug7|aug|sus2|sus4|sus|add2|add4|add6|add7|add9|add11|add13|6|7|9|11|13|5|2|4)`;
+  // Incluye la notación de Cifra Club / Brasil: 7M y M7 (séptima mayor),
+  // 7+ (aumentado), ° º (disminuido), ø (semidisminuido), Δ, b5 #9 etc.
+  const CHORD_SUFFIX = String.raw`(?:maj7|maj9|maj11|maj13|maj|Maj7|Maj|min7|min9|min11|min13|min|mmaj7|mMaj7|m7M|m7b5|m6|m7|m9|m11|m13|m|M7|M9|M13|7M|9M|13M|M|dim7|dim9|dim|aug7|aug|sus2|sus4|sus|add2|add4|add6|add7|add9|add11|add13|[b#](?:5|9|11|13)|6|7|9|11|13|5|2|4|\+|°|º|ø|Δ)`;
   const CHORD_BODY = String.raw`${CHORD_ROOT}(?:${CHORD_SUFFIX})*(?:\([^)]+\))?(?:/[A-G](?:#|b)?)?`;
   const CHORD_TOKEN_RE = new RegExp(`^(?:${CHORD_BODY}|N\\.?C\\.?|X|x|%)$`);
   const isBlankLine = (line) => line.trim() === '';
@@ -201,12 +203,21 @@
     return chords.map((t) => `[${t.chord}]`).join(' ');
   }
 
+  // Acordes opcionales o de paso entre paréntesis: "(E)", o "(E D)" en dos
+  // fichas "(E" y "D)". Devuelve el acorde con sus paréntesis: "(E)", "(D)".
+  function parseChordToken(text) {
+    if (CHORD_TOKEN_RE.test(text)) return text;
+    const m = /^\(?([^()]+?)\)?$/.exec(text);
+    if (m && m[1] !== text && CHORD_TOKEN_RE.test(m[1]) && !/^[xX%]$/.test(m[1])) return `(${m[1]})`;
+    return null;
+  }
+
   function isMostlyChordTokens(tokens) {
     if (tokens.length === 0) return false;
     let chordTokens = 0;
     let nonChordTokens = 0;
     for (const token of tokens) {
-      if (CHORD_TOKEN_RE.test(token.text)) { chordTokens += 1; continue; }
+      if (parseChordToken(token.text)) { chordTokens += 1; continue; }
       if (/^[|:.\-]+$/.test(token.text)) continue;
       nonChordTokens += 1;
     }
@@ -220,7 +231,8 @@
     for (const match of expanded.matchAll(/\S+/g)) {
       const text = match[0];
       const index = match.index ?? 0;
-      if (CHORD_TOKEN_RE.test(text)) tokens.push({ chord: text, index, order });
+      const chord = parseChordToken(text);
+      if (chord) tokens.push({ chord, index, order, width: text.length });
       order += 1;
     }
     return {
@@ -433,6 +445,27 @@
       if (sourceLineLength !== undefined) sourceLineLength = Math.max(1, sourceLineLength - indent);
     }
 
+    // Acordes entre paréntesis pegados a otro ("G (E D)" = G y luego E, D de
+    // paso): no se reparten por columna, van junto al acorde anterior.
+    const GLUE = '\u0001';
+    const glued = new Map();
+    {
+      const main = [];
+      for (const c of [...shifted].sort((a, b) => a.index - b.index || a.order - b.order)) {
+        const prev = main[main.length - 1];
+        const prevEnd = prev ? prev.index + (prev.width ?? prev.chord.length) : -Infinity;
+        if (prev && c.chord.startsWith('(') && c.index - prevEnd <= 1) {
+          if (!glued.has(prev.key)) glued.set(prev.key, { chord: prev.chord, extra: [] });
+          glued.get(prev.key).extra.push(c.chord);
+          prev.width = c.index + (c.width ?? c.chord.length) - prev.index;
+          continue;
+        }
+        main.push({ ...c, key: `${GLUE}${main.length}${GLUE}` });
+      }
+      for (const c of main) if (glued.has(c.key)) c.chord = `${c.chord}${c.key}`;
+      shifted = main;
+    }
+
     // Acordes que caen después de que termina la letra (p. ej. "Te quiero"
     // seguido de D Bm G A): no se amontonan en la última palabra, se ponen
     // al final respetando la separación que traían.
@@ -453,7 +486,10 @@
     for (const c of trailing) {
       const gap = Math.max(1, c.index - prevEnd);
       line += ' '.repeat(gap) + `[${c.chord}]`;
-      prevEnd = c.index + c.chord.length;
+      prevEnd = c.index + (c.width ?? c.chord.length);
+    }
+    for (const [key, g] of glued) {
+      line = line.replace(`[${g.chord}${key}]`, `[${g.chord}]` + g.extra.map((x) => `[${x}]`).join(''));
     }
     return line;
   }

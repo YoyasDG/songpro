@@ -417,6 +417,12 @@
       return sounding ? formatKey(sounding) : null;
   }
   function transposeChord(text, semitones, key) {
+      // SongPro: acordes opcionales o de paso entre paréntesis, "(E)" → "(F#)"
+      const wrapped = /^\((.+)\)$/.exec(text);
+      if (wrapped) {
+          const inner = transposeChord(wrapped[1], semitones, key);
+          return inner === null ? null : `(${inner})`;
+      }
       const chord = parseChord(text);
       if (!chord)
           return null;
