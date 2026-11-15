@@ -601,9 +601,307 @@
   // ── PDF: hoja de impresión + "Guardar como PDF" del navegador ──
   const printSheet = $('printSheet');
 
+  // ── Hojas para imprimir / PDF ──
+  // Se arman con JavaScript en hojas tamaño carta (1 o 2 columnas), sin
+  // partir secciones. No usamos columnas CSS porque Safari las ignora al
+  // imprimir. El mismo acomodo sirve para imprimir y para el PDF de iPhone.
+  const MM = 96 / 25.4;              // px por milímetro (CSS)
+  const PAGE_H = 243 * MM;           // alto útil: carta 279.4mm - márgenes, con holgura
+  const make = (tag, cls) => Object.assign(document.createElement(tag), { className: cls });
+
+  function layoutPages(html, twoCols) {
+    const stage = make('div', `print-sheet print-stage${twoCols ? ' two-cols' : ''}`);
+    document.body.appendChild(stage);
+    const src = document.createElement('div');
+    src.innerHTML = html;
+    for (const section of [...src.children]) {
+      if (section.classList.contains('index-page')) {
+        const pg = make('div', 'pp index');
+        pg.append(...section.childNodes);
+        stage.append(pg);
+        continue;
+      }
+      const song = section.querySelector('.song');
+      const header = [...section.children].filter((e) => e !== song);
+      paginateSong(stage, header, song ? [...song.children] : [], twoCols ? 2 : 1);
+    }
+    stage.classList.add('laid');
+    return stage;
+  }
+
+  function paginateSong(stage, header, blocks, nCols) {
+    let cols = [];
+    let colIdx = 0;
+    let avail = PAGE_H;
+    const height = (col) => col.getBoundingClientRect().height;
+
+    const newPage = (first) => {
+      const page = make('div', 'pp');
+      stage.append(page);
+      if (first) header.forEach((h) => page.append(h));
+      const wrap = make('div', 'pp-cols');
+      page.append(wrap);
+      cols = Array.from({ length: nCols }, () => wrap.appendChild(make('div', 'pp-col')));
+      colIdx = 0;
+      avail = PAGE_H - (wrap.getBoundingClientRect().top - page.getBoundingClientRect().top);
+    };
+    const nextColumn = () => { if (colIdx < nCols - 1) colIdx += 1; else newPage(false); };
+
+    newPage(true);
+    const queue = [...blocks];
+    while (queue.length) {
+      const blk = queue.shift();
+      const col = cols[colIdx];
+      col.append(blk);
+      if (height(col) <= avail) continue;
+      if (col.children.length > 1) {        // no cabe aquí: a la siguiente columna/hoja
+        blk.remove();
+        nextColumn();
+        queue.unshift(blk);
+        continue;
+      }
+      // Sección más alta que una columna completa: se parte por líneas
+      blk.remove();
+      const part = blk.cloneNode(false);
+      col.append(part);
+      const kids = [...blk.children];
+      let i = 0;
+      for (; i < kids.length; i += 1) {
+        part.append(kids[i]);
+        if (height(col) > avail) { kids[i].remove(); break; }
+      }
+      const minKeep = Math.min(kids.length, kids[0]?.matches('.comment, .section-label') ? 2 : 1);
+      for (; i < minKeep; i += 1) part.append(kids[i]); // siempre avanza
+      if (i < kids.length) {
+        const rest = blk.cloneNode(false);
+        rest.append(...kids.slice(i));
+        nextColumn();
+        queue.unshift(rest);
+      }
+    }
+  }
+
+  // App instalada en iPhone/iPad: iOS ignora window.print() ahí, así que
+  // generamos un PDF y abrimos el menú Compartir (que trae Imprimir).
+  // Con ?pdf en la URL se puede probar este camino en cualquier navegador.
+  const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const USE_PDF = new URLSearchParams(location.search).has('pdf') ||
+    (IS_IOS && (navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches));
+
+  let pdfLibPromise = null;
+  function loadPdfLib() {
+    if (window.PDFLib) return Promise.resolve(window.PDFLib);
+    if (!pdfLibPromise) {
+      pdfLibPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'vendor/pdf-lib.min.js';
+        s.onload = () => resolve(window.PDFLib);
+        s.onerror = () => { pdfLibPromise = null; reject(new Error('pdf-lib')); };
+        document.head.appendChild(s);
+      });
+    }
+    return pdfLibPromise;
+  }
+  if (USE_PDF) window.addEventListener('load', () => setTimeout(() => loadPdfLib().catch(() => {}), 1500));
+
+  async function makePdf(stage) {
+    const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
+    const doc = await PDFDocument.create();
+    const F = {
+      sans: await doc.embedFont(StandardFonts.Helvetica),
+      sansB: await doc.embedFont(StandardFonts.HelveticaBold),
+      mono: await doc.embedFont(StandardFonts.Courier),
+      monoB: await doc.embedFont(StandardFonts.CourierBold),
+      serifB: await doc.embedFont(StandardFonts.TimesRomanBold),
+    };
+    const PT = 0.75;                       // px → pt
+    const W = 612, H = 792;                // carta en puntos
+    const ML = 14 * 72 / 25.4, MT = 14 * 72 / 25.4;
+    const color = (css) => {
+      const m = /rgba?\(([\d.]+)[, ]+([\d.]+)[, ]+([\d.]+)/.exec(css) || [0, 0, 0, 0];
+      return rgb(m[1] / 255, m[2] / 255, m[3] / 255);
+    };
+    const pickFont = (cs) => {
+      const fam = cs.fontFamily.toLowerCase();
+      const bold = parseInt(cs.fontWeight, 10) >= 600;
+      if (fam.includes('fraunces')) return F.serifB;
+      if (fam.includes('mono')) return bold ? F.monoB : F.mono;
+      return bold ? F.sansB : F.sans;
+    };
+    // Las fuentes estándar del PDF solo traen caracteres latinos (WinAnsi)
+    const REPLACE = { '♭': 'b', '♯': '#', '𝄪': 'x', '𝄫': 'bb', 'Δ': 'maj', '→': '->' };
+    const safe = (font, text) => [...text].map((ch) => {
+      const c = REPLACE[ch] ?? ch;
+      try { font.encodeText(c); return c; } catch { return '?'; }
+    }).join('');
+
+    for (const pp of stage.querySelectorAll('.pp')) {
+      const page = doc.addPage([W, H]);
+      const o = pp.getBoundingClientRect();
+      const X = (x) => ML + (x - o.left) * PT;
+      const Y = (y) => H - (MT + (y - o.top) * PT);
+
+      // Fondos y líneas: etiquetas, tonos del índice, línea del subtítulo,
+      // borde de sección y separador de columnas
+      pp.querySelectorAll('.comment, .index-list em').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        const h = r.height * PT, w = r.width * PT, rad = h / 2;
+        const x = X(r.left), y = Y(r.top);
+        page.drawSvgPath(`M ${rad} 0 H ${w - rad} A ${rad} ${rad} 0 0 1 ${w - rad} ${h} H ${rad} A ${rad} ${rad} 0 0 1 ${rad} 0 Z`,
+          { x, y, color: color(cs.backgroundColor) });
+        if (el.classList.contains('comment')) {
+          const dot = 4 * PT * (96 / 72);
+          page.drawCircle({ x: x + parseFloat(cs.paddingLeft) * PT + dot / 2, y: y - h / 2, size: dot / 2, color: color(cs.color) });
+        }
+      });
+      pp.querySelectorAll('.sub').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        page.drawLine({ start: { x: X(r.left), y: Y(r.bottom) }, end: { x: X(r.right), y: Y(r.bottom) },
+          thickness: parseFloat(cs.borderBottomWidth) * PT, color: color(cs.borderBottomColor) });
+      });
+      pp.querySelectorAll('.section, .pp-col + .pp-col').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        page.drawLine({ start: { x: X(r.left), y: Y(r.top) }, end: { x: X(r.left), y: Y(r.bottom) },
+          thickness: parseFloat(cs.borderLeftWidth) * PT, color: color(cs.borderLeftColor) });
+      });
+      // Números del índice (los ::marker no son texto)
+      pp.querySelectorAll('.index-list li').forEach((li, i) => {
+        const r = li.getBoundingClientRect();
+        const cs = getComputedStyle(li);
+        page.drawText(`${i + 1}.`, { x: X(r.left) - 16, y: Y(r.top + r.height / 2 + parseFloat(cs.fontSize) * 0.33),
+          size: 10, font: F.mono, color: color(getComputedStyle(pp).color) });
+      });
+
+      // Líneas de canción: se re-acomodan con las medidas de las fuentes del
+      // PDF (acorde + su pedazo de letra, uno tras otro), igual que la página.
+      // Si se copiara la posición de cada pedazo saldrían huecos dentro de
+      // las palabras, porque Helvetica mide distinto que la fuente de la app.
+      pp.querySelectorAll('.line').forEach((line) => {
+        const lr = line.getBoundingClientRect();
+        const chordsOnly = line.classList.contains('chords-only');
+        let x = X(lr.left);
+        for (const seg of line.children) {
+          const c = seg.querySelector('.c');
+          const l = seg.querySelector('.l');
+          let cw = 0;
+          let lw = 0;
+          if (c && c.textContent.trim()) {
+            const cs = getComputedStyle(c);
+            const px = parseFloat(cs.fontSize);
+            const size = px * PT;
+            const r = c.getBoundingClientRect();
+            const baseline = Y(r.top + (r.height + px * 0.7) / 2);
+            let cx = x;
+            for (const node of c.childNodes) {
+              const isSup = node.nodeName === 'SUP';
+              const sz = isSup ? size * 0.72 : size;
+              const t = safe(F.monoB, node.textContent);
+              if (!t) continue;
+              page.drawText(t, { x: cx, y: baseline + (isSup ? size * 0.42 : 0), size: sz, font: F.monoB, color: color(cs.color) });
+              cx += F.monoB.widthOfTextAtSize(t, sz);
+            }
+            cw = cx - x + parseFloat(cs.paddingRight) * PT;
+          }
+          if (l && !chordsOnly && l.textContent) {
+            const cs = getComputedStyle(l);
+            const px = parseFloat(cs.fontSize);
+            const font = pickFont(cs);
+            const t = safe(font, l.textContent.replace(/\u00a0/g, ' '));
+            const r = l.getBoundingClientRect();
+            if (t.trim()) {
+              page.drawText(t, { x, y: Y(r.top + (r.height + px * 0.7) / 2), size: px * PT, font, color: color(cs.color) });
+            }
+            lw = font.widthOfTextAtSize(t, px * PT);
+          }
+          x += Math.max(cw, lw) + (chordsOnly ? parseFloat(getComputedStyle(seg).marginRight) * PT : 0);
+        }
+      });
+
+      // Resto del texto (títulos, etiquetas, índice) en la posición donde el
+      // navegador lo puso
+      const walker = document.createTreeWalker(pp, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.nodeValue.trim()) continue;
+        const el = n.parentElement;
+        if (el.closest('.line')) continue;
+        const cs = getComputedStyle(el);
+        const font = pickFont(cs);
+        const px = parseFloat(cs.fontSize);
+        const upper = cs.textTransform === 'uppercase';
+        const fill = color(cs.color);
+        // agrupar caracteres por renglón (por si un título largo se parte)
+        const range = document.createRange();
+        let runStart = 0;
+        let runTop = null;
+        const flush = (end, rect) => {
+          let t = n.nodeValue.slice(runStart, end);
+          if (!t.trim()) return;
+          if (upper) t = t.toUpperCase();
+          const lead = t.length - t.trimStart().length;
+          range.setStart(n, runStart + lead);
+          range.setEnd(n, end);
+          const rr = range.getBoundingClientRect();
+          const baseline = rr.top + (rr.height + px * 0.7) / 2;
+          page.drawText(safe(font, t.trim()), { x: X(rr.left), y: Y(baseline), size: px * PT, font, color: fill });
+        };
+        for (let i = 0; i < n.nodeValue.length; i += 1) {
+          range.setStart(n, i);
+          range.setEnd(n, i + 1);
+          const r = range.getClientRects()[0];
+          if (!r) continue;
+          if (runTop === null) runTop = r.top;
+          if (Math.abs(r.top - runTop) > px * 0.5) { flush(i); runStart = i; runTop = r.top; }
+        }
+        flush(n.nodeValue.length);
+      }
+    }
+    return doc.save();
+  }
+
+  let pdfUrl = null;
+  async function sharePdf(stage, fileName) {
+    flash('Generando PDF…');
+    let bytes;
+    try {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      bytes = await makePdf(stage);
+    } catch {
+      flash('No se pudo generar el PDF');
+      return;
+    } finally {
+      stage.remove();
+    }
+    const name = `${fileName || 'cancion'}.pdf`;
+    const file = new File([bytes], name, { type: 'application/pdf' });
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    pdfUrl = URL.createObjectURL(file);
+    const dlg = $('pdfReady');
+    const dl = $('pdfDownload');
+    dl.href = pdfUrl;
+    dl.download = name;
+    const share = $('pdfShare');
+    const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+    share.hidden = !canShare;
+    // El menú Compartir debe abrirse con un toque del usuario: por eso va en
+    // este botón y no automáticamente al terminar de generar el PDF.
+    share.onclick = () => {
+      navigator.share({ files: [file], title: name }).catch(() => {});
+    };
+    $('pdfClose').onclick = () => dlg.close();
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else window.open(pdfUrl, '_blank');
+  }
+
   function printHtml(html, fileName, twoCols) {
-    printSheet.innerHTML = html;
-    printSheet.classList.toggle('two-cols', twoCols);
+    const stage = layoutPages(html, twoCols);
+    if (USE_PDF) { sharePdf(stage, fileName); return; }
+
+    printSheet.className = `print-sheet${twoCols ? ' two-cols' : ''} laid`;
+    printSheet.replaceChildren(...stage.childNodes);
+    stage.remove();
     const previousTitle = document.title;
     // El navegador usa el título de la página como nombre del PDF
     document.title = fileName;

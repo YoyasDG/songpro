@@ -201,6 +201,17 @@ Santo Santo es Él
     <span>Todo corre en tu navegador · nada se sube a ningún servidor</span>
   </footer>
 
+  <!-- PDF listo (app instalada en iPhone, donde iOS no permite imprimir) -->
+  <dialog class="pdf-ready" id="pdfReady">
+    <h2>Tu PDF está listo</h2>
+    <p>Toca <strong>Compartir</strong> y elige <strong>Imprimir</strong> o <strong>Guardar en Archivos</strong>.</p>
+    <div class="pdf-actions">
+      <button class="btn" id="pdfShare" type="button">Compartir / Imprimir</button>
+      <a class="btn ghost" id="pdfDownload" href="#" download="cancion.pdf">Descargar PDF</a>
+      <button class="btn ghost" id="pdfClose" type="button">Cerrar</button>
+    </div>
+  </dialog>
+
   <!-- Hoja que se imprime al presionar PDF (oculta en pantalla) -->
   <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
 
