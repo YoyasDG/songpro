@@ -103,11 +103,17 @@ Vamp = {comment: Vamp}
     </div>
   </details>
 
-  <main class="panes">
+  <main class="panes" id="panes">
     <div class="pane" id="dropzone">
+      <!-- Barra delgada cuando el texto original está minimizado -->
+      <button class="pane-rail" id="railExpand" type="button" title="Mostrar el texto original">
+        <span class="rail-icon" aria-hidden="true">›</span>
+        <span class="rail-label">Texto original</span>
+      </button>
       <div class="pane-head">
         <h2>Texto original</h2>
         <div class="actions">
+          <button class="btn ghost icon-btn" id="collapseTxt" type="button" title="Minimizar el texto original y dar todo el espacio al .cho" aria-label="Minimizar texto original">‹</button>
           <label class="btn ghost">Abrir .txt
             <input id="file" type="file" accept=".txt,text/plain" hidden />
           </label>
