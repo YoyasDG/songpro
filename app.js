@@ -27,6 +27,31 @@
   // ── diccionario personal (se guarda en este navegador) ──
   const dictBox = $('dictionary');
   const DICT_KEY = 'songpro.dictionary';
+
+  // ── Bemoles → sostenidos (Bb se escribe A#) ──
+  // Se recuerda en este navegador. Aplica al .cho, a la vista previa y al PDF.
+  const SHARPS_KEY = 'songpro.sharps';
+  let useSharps = false;
+  try { useSharps = localStorage.getItem(SHARPS_KEY) === '1'; } catch { /* sin almacenamiento */ }
+  const FLAT_TO_SHARP = { Cb: 'B', Db: 'C#', Eb: 'D#', Fb: 'E', Gb: 'F#', Ab: 'G#', Bb: 'A#' };
+
+  // Un acorde: solo la nota raíz y el bajo (Bb7/Ab → A#7/G#); "b9", "b5" no se tocan
+  function sharpenChord(chord) {
+    return chord.replace(/(^|\/|\()([A-G])b/g, (_, pre, l) => pre + FLAT_TO_SHARP[`${l}b`]);
+  }
+  // Nombres de tono sueltos ("Bb", "Ebm") dentro de un texto
+  function sharpenNames(text) {
+    return text.replace(/\b([A-G])b(?![a-ln-z])/g, (_, l) => FLAT_TO_SHARP[`${l}b`]);
+  }
+  // Un .cho completo: acordes y {key:}
+  function sharpenCho(text) {
+    return text.split('\n').map((line) => {
+      const key = /^(\s*\{\s*key\s*:\s*)([^}]*)(\}.*)$/i.exec(line);
+      if (key) return key[1] + sharpenNames(key[2]) + key[3];
+      if (/^\s*\{.*\}\s*$/.test(line)) return line;
+      return line.replace(/\[([^\]]+)\]/g, (_, c) => `[${sharpenChord(c)}]`);
+    }).join('\n');
+  }
   try { dictBox.value = localStorage.getItem(DICT_KEY) || ''; } catch { /* sin almacenamiento */ }
 
   function updateDictCount() {
@@ -52,6 +77,7 @@
     if (cho && choTargetKey) {
       try { cho = transposeTo(cho, choTargetKey); } catch { choTargetKey = ''; }
     }
+    if (cho && useSharps) cho = sharpenCho(cho);
     output.value = cho;
     outputEditedByHand = false;
     updateChordButtons();
@@ -383,6 +409,7 @@
     } else if (capo > 0) {
       keyText = `Capo ${capo}`;
     }
+    if (useSharps) keyText = sharpenNames(keyText);
     if (meta.x_songpro_numeros) keyText += `${keyText ? ' · ' : ''}En números (Nashville)`;
     const sub = [meta.author || meta.artist, keyText, meta.tempo && `Tempo: ${meta.tempo}`]
       .filter(Boolean).join(' · ');
@@ -459,6 +486,7 @@
         } catch { result = text; }
       }
     }
+    if (useSharps && !numeros) result = sharpenCho(result);
     return numeros ? toNashville(result) : result;
   }
 
@@ -515,7 +543,10 @@
     return `{x_songpro_numeros: on}\n${lines.join('\n')}`;
   }
 
-  function keyLabel(k) { return k.replace('b', '♭').replace('#', '♯'); }
+  function keyLabel(k) {
+    if (useSharps) k = sharpenNames(k);
+    return k.replace('b', '♭').replace('#', '♯');
+  }
 
   function fillKeys(select, info, firstOption) {
     const minor = !!Transposer.parseKey(info.key)?.minor;
@@ -574,11 +605,40 @@
     }
   }
 
+  // Botón ♭→♯
+  const sharpBtn = $('sharpToggle');
+  function paintSharpBtn() {
+    sharpBtn.setAttribute('aria-pressed', String(useSharps));
+    sharpBtn.title = useSharps
+      ? 'Usando sostenidos (A# en lugar de Bb). Toca para volver a bemoles.'
+      : 'Escribir los bemoles como sostenidos (Bb → A#)';
+  }
+  paintSharpBtn();
+  sharpBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  sharpBtn.addEventListener('click', () => {
+    useSharps = !useSharps;
+    try { localStorage.setItem(SHARPS_KEY, useSharps ? '1' : '0'); } catch { /* ignorar */ }
+    paintSharpBtn();
+    if (useSharps) {
+      if (output.value.trim()) output.value = sharpenCho(output.value);
+    } else if (input.value.trim() && !outputEditedByHand) {
+      convert(); // se vuelve a generar con los bemoles normales
+    }
+    lastKeySig = '';
+    lastChordKey = '';
+    updateChordButtons();
+    updateKeyControls();
+    if (typeof renderBatch === 'function') renderBatch();
+    if (!preview.hidden) renderPreview();
+    flash(useSharps ? 'Bemoles → sostenidos (A#, D#, G#…)' : 'De vuelta a bemoles donde toque');
+  });
+
   // 1) Transportar el .cho (cambia el archivo que descargas)
   choKey.addEventListener('change', () => {
     const target = choKey.value;
     try {
-      const next = transposeTo(output.value, target);
+      let next = transposeTo(output.value, target);
+      if (useSharps) next = sharpenCho(next);
       output.value = next;
       choTargetKey = target;
       lastChordKey = '';
