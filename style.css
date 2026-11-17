@@ -565,17 +565,27 @@ textarea::placeholder { color: var(--ink-muted); }
 }
 .key-pick select:disabled { color: var(--ink-muted); background: var(--surface-200); }
 .key-pick select.guessed { border-style: dashed; border-color: var(--chambray-strong); }
-/* Botón ♭→♯ */
-.sharp-toggle {
-  font: 700 13px/18px var(--font-mono);
-  padding: 6px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line-strong);
-  background: var(--surface-100);
+/* Selector B♭ | A♯ (mismo estilo que las pestañas .cho / Vista previa) */
+.acc-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-200);
+  border-radius: var(--radius-pill);
+}
+.acc-switch button {
+  font: 600 14px/18px var(--font-sans);
+  min-width: 40px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--ink-muted);
   cursor: pointer;
 }
-.sharp-toggle[aria-pressed="true"] { background: var(--chambray-strong); border-color: var(--chambray-strong); color: var(--on-brand); }
+.acc-switch button:hover:not(.active) { color: var(--ink); }
+.acc-switch button.active { background: var(--chambray-strong); color: var(--on-brand); }
+.acc-switch button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .quick .key-pick { padding-right: var(--space-2); margin-right: 2px; border-right: 1px solid var(--line); }
 
 .pdfbar {
