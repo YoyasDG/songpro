@@ -43,6 +43,25 @@
   function sharpenNames(text) {
     return text.replace(/\b([A-G])b(?![a-ln-z])/g, (_, l) => FLAT_TO_SHARP[`${l}b`]);
   }
+  // Inverso, para un .cho editado a mano: A#/D#/G# → Bb/Eb/Ab salvo en
+  // tonos de sostenidos; C# y F# → Db y Gb solo en tonos de muchos bemoles.
+  const SHARP_KEYS = /^(G|D|A|E|B|F#|C#|Em|Bm|F#m|C#m|G#m|D#m|A#m)$/;
+  const MANY_FLATS = /^(Ab|Db|Gb|Cb|A#|C#|D#|G#|Fm|Bbm|Ebm|Abm|A#m|D#m)$/;
+  const SHARP_TO_FLAT = { 'A#': 'Bb', 'D#': 'Eb', 'G#': 'Ab', 'C#': 'Db', 'F#': 'Gb' };
+  function flattenCho(text) {
+    const info = keyInfo(text);
+    const key = info ? info.key : '';
+    if (SHARP_KEYS.test(key)) return text;
+    const swap = MANY_FLATS.test(key) ? /^(A#|D#|G#|C#|F#)/ : /^(A#|D#|G#)/;
+    const fix = (note) => note.replace(swap, (n) => SHARP_TO_FLAT[n]);
+    return text.split('\n').map((line) => {
+      const k = /^(\s*\{\s*key\s*:\s*)([^}]*)(\}.*)$/i.exec(line);
+      if (k) return k[1] + fix(k[2].trim()) + k[3];
+      if (/^\s*\{.*\}\s*$/.test(line)) return line;
+      return line.replace(/\[([^\]]+)\]/g, (_, c) =>
+        `[${c.replace(/(^|\/|\()([A-G]#)/g, (m0, pre, n) => pre + fix(n))}]`);
+    }).join('\n');
+  }
   // Un .cho completo: acordes y {key:}
   function sharpenCho(text) {
     return text.split('\n').map((line) => {
@@ -605,33 +624,46 @@
     }
   }
 
-  // Botón ♭→♯
-  const sharpBtn = $('sharpToggle');
-  function paintSharpBtn() {
-    sharpBtn.setAttribute('aria-pressed', String(useSharps));
-    sharpBtn.title = useSharps
-      ? 'Usando sostenidos (A# en lugar de Bb). Toca para volver a bemoles.'
-      : 'Escribir los bemoles como sostenidos (Bb → A#)';
+  // Selector B♭ | A♯ (bemoles o sostenidos)
+  const accButtons = [...document.querySelectorAll('#accSwitch [data-acc]')];
+  function paintAccSwitch() {
+    for (const b of accButtons) {
+      const on = (b.dataset.acc === 'sharp') === useSharps;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', String(on));
+    }
   }
-  paintSharpBtn();
-  sharpBtn.addEventListener('mousedown', (e) => e.preventDefault());
-  sharpBtn.addEventListener('click', () => {
-    useSharps = !useSharps;
+  paintAccSwitch();
+
+  function setSharps(value) {
+    if (value === useSharps) return;
+    useSharps = value;
     try { localStorage.setItem(SHARPS_KEY, useSharps ? '1' : '0'); } catch { /* ignorar */ }
-    paintSharpBtn();
-    if (useSharps) {
-      if (output.value.trim()) output.value = sharpenCho(output.value);
-    } else if (input.value.trim() && !outputEditedByHand) {
-      convert(); // se vuelve a generar con los bemoles normales
+    paintAccSwitch();
+    if (output.value.trim()) {
+      if (useSharps) {
+        output.value = sharpenCho(output.value);
+      } else if (input.value.trim() && !outputEditedByHand) {
+        convert(); // se vuelve a generar con los bemoles normales
+      } else {
+        // .cho editado a mano: se regresan a bemol solo donde el tono lo pide
+        // (en F, A# → Bb; en tono de E o B, D# y G# se quedan como están)
+        output.value = flattenCho(output.value);
+      }
     }
     lastKeySig = '';
     lastChordKey = '';
     updateChordButtons();
     updateKeyControls();
-    if (typeof renderBatch === 'function') renderBatch();
+    renderBatch();
     if (!preview.hidden) renderPreview();
-    flash(useSharps ? 'Bemoles → sostenidos (A#, D#, G#…)' : 'De vuelta a bemoles donde toque');
-  });
+    flash(useSharps ? 'Usando sostenidos: A#, D#, G#…' : 'Usando bemoles: Bb, Eb, Ab…');
+  }
+
+  for (const b of accButtons) {
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // no quitarle el cursor al editor
+    b.addEventListener('click', () => setSharps(b.dataset.acc === 'sharp'));
+  }
 
   // 1) Transportar el .cho (cambia el archivo que descargas)
   choKey.addEventListener('change', () => {

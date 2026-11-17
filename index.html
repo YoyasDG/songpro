@@ -140,7 +140,10 @@ Santo Santo es Él
           <span>Tono</span>
           <select id="choKey" disabled><option>—</option></select>
         </label>
-        <button class="sharp-toggle" id="sharpToggle" type="button" aria-pressed="false">♭→♯</button>
+        <div class="acc-switch" id="accSwitch" role="radiogroup" aria-label="Cómo escribir las alteraciones">
+          <button type="button" role="radio" data-acc="flat" title="Bemoles: Bb, Eb, Ab…">B♭</button>
+          <button type="button" role="radio" data-acc="sharp" title="Sostenidos: A#, D#, G#…">A♯</button>
+        </div>
         <select id="labelInsert" title="Insertar etiqueta en la línea del cursor">
           <option value="">Etiqueta ▾</option>
           <option>Intro</option>
