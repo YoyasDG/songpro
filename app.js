@@ -446,6 +446,17 @@
       : sheet.html;
   }
 
+  // ── Enfoque en el .cho (minimizar el texto original) ──
+  const panes = $('panes');
+  const FOCUS_KEY = 'songpro.focusCho';
+  function setFocusCho(on) {
+    panes.classList.toggle('focus-cho', on);
+    try { localStorage.setItem(FOCUS_KEY, on ? '1' : '0'); } catch { /* ignorar */ }
+  }
+  try { if (localStorage.getItem(FOCUS_KEY) === '1') panes.classList.add('focus-cho'); } catch { /* ignorar */ }
+  $('collapseTxt').addEventListener('click', () => { setFocusCho(true); output.focus(); });
+  $('railExpand').addEventListener('click', () => { setFocusCho(false); input.focus(); });
+
   // ── Transpositor ──
   const choKey = $('choKey');
   const pdfKey = $('pdfKey');
