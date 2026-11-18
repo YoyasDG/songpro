@@ -93,6 +93,7 @@ Vamp = {comment: Vamp}
         <span class="batch-spacer"></span>
         <input id="batchName" class="batch-name" type="text" placeholder="Nombre: Cancionero" title="Nombre del cancionero y del PDF" />
         <label class="batch-check"><input id="batchIndex" type="checkbox" checked /> Índice</label>
+        <label class="batch-check" title="Acordes como grados de la escala (Nashville)"><input id="batchNumbers" type="checkbox" /> Números</label>
         <select id="batchCols" class="cols" title="Columnas">
           <option value="1">1 columna</option>
           <option value="2" selected>2 columnas</option>
@@ -102,11 +103,17 @@ Vamp = {comment: Vamp}
     </div>
   </details>
 
-  <main class="panes">
+  <main class="panes" id="panes">
     <div class="pane" id="dropzone">
+      <!-- Barra delgada cuando el texto original está minimizado -->
+      <button class="pane-rail" id="railExpand" type="button" title="Mostrar el texto original">
+        <span class="rail-icon" aria-hidden="true">›</span>
+        <span class="rail-label">Texto original</span>
+      </button>
       <div class="pane-head">
         <h2>Texto original</h2>
         <div class="actions">
+          <button class="btn ghost icon-btn" id="collapseTxt" type="button" title="Minimizar el texto original y dar todo el espacio al .cho" aria-label="Minimizar texto original">‹</button>
           <label class="btn ghost">Abrir .txt
             <input id="file" type="file" accept=".txt,text/plain" hidden />
           </label>
@@ -139,6 +146,10 @@ Santo Santo es Él
           <span>Tono</span>
           <select id="choKey" disabled><option>—</option></select>
         </label>
+        <div class="acc-switch" id="accSwitch" role="radiogroup" aria-label="Cómo escribir las alteraciones">
+          <button type="button" role="radio" data-acc="flat" title="Bemoles: Bb, Eb, Ab…">B♭</button>
+          <button type="button" role="radio" data-acc="sharp" title="Sostenidos: A#, D#, G#…">A♯</button>
+        </div>
         <select id="labelInsert" title="Insertar etiqueta en la línea del cursor">
           <option value="">Etiqueta ▾</option>
           <option>Intro</option>
@@ -155,7 +166,14 @@ Santo Santo es Él
         <div class="chord-buttons" id="chordButtons"></div>
         <input id="customChord" type="text" placeholder="Otro…" title="Escribe un acorde y presiona Enter" />
       </div>
-      <textarea id="output" spellcheck="false" placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
+      <div class="code" id="codeWrap">
+        <div class="gutter" aria-hidden="true"><div class="gutter-inner" id="gutter"></div></div>
+        <div class="code-area">
+          <pre class="code-hl" aria-hidden="true"><code id="codeHl"></code></pre>
+          <textarea id="output" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"
+            placeholder="Aquí aparece el ChordPro (puedes editarlo)"></textarea>
+        </div>
+      </div>
       <div id="preview" class="preview" hidden></div>
       <div class="pdfbar" id="pdfbar">
         <label class="key-pick" title="Tono en el que va a sonar la canción (no cambia el .cho)">
@@ -169,6 +187,13 @@ Santo Santo es Él
             <option value="1">1</option><option value="2">2</option><option value="3">3</option>
             <option value="4">4</option><option value="5">5</option><option value="6">6</option>
             <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+          </select>
+        </label>
+        <label class="key-pick" title="Números Nashville: los acordes se muestran como grados de la escala (1, 4, 5, 6m…). Solo el PDF; el .cho no cambia.">
+          <span>Notación</span>
+          <select id="pdfNotation">
+            <option value="acordes">Acordes</option>
+            <option value="numeros">Números</option>
           </select>
         </label>
         <select id="pdfCols" class="cols" title="Columnas del PDF">
@@ -185,6 +210,17 @@ Santo Santo es Él
     <span id="status"></span>
     <span>Todo corre en tu navegador · nada se sube a ningún servidor</span>
   </footer>
+
+  <!-- PDF listo (app instalada en iPhone, donde iOS no permite imprimir) -->
+  <dialog class="pdf-ready" id="pdfReady">
+    <h2>Tu PDF está listo</h2>
+    <p>Toca <strong>Compartir</strong> y elige <strong>Imprimir</strong> o <strong>Guardar en Archivos</strong>.</p>
+    <div class="pdf-actions">
+      <button class="btn" id="pdfShare" type="button">Compartir / Imprimir</button>
+      <a class="btn ghost" id="pdfDownload" href="#" download="cancion.pdf">Descargar PDF</a>
+      <button class="btn ghost" id="pdfClose" type="button">Cerrar</button>
+    </div>
+  </dialog>
 
   <!-- Hoja que se imprime al presionar PDF (oculta en pantalla) -->
   <div id="printSheet" class="print-sheet" aria-hidden="true"></div>
