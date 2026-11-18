@@ -11,6 +11,7 @@
 
   let fileBaseName = '';
   let outputEditedByHand = false;
+  let bookEdit = null; // modo cancionero: { index, saved } mientras se edita una canción
   let choTargetKey = ''; // tono elegido para el .cho ('' = el original)
   let statusTimer;
 
@@ -89,6 +90,8 @@
 
   function convert() {
     const text = input.value;
+    // En modo cancionero, sin texto original no se reconvierte (borraría el .cho)
+    if (bookEdit && !text.trim()) return;
     let cho = text.trim()
       ? ChordConverter.convertTxt(text, metadata(), modeSel.value, dictBox.value)
       : '';
@@ -115,6 +118,9 @@
     for (const line of output.value.split('\n')) {
       if (/^\s*\{.*\}\s*$/.test(line)) continue; // directivas
       for (const m of line.matchAll(/\[([^\]\s]+)\]/g)) {
+        // solo acordes de verdad (un .cho viejo puede traer [Estribillo])
+        if (!ChordConverter.extractChords(m[1]).isChordLine && !/^[A-G]/.test(m[1])) continue;
+        if (/^[A-G][a-z]{3,}/.test(m[1]) && !ChordConverter.extractChords(m[1]).isChordLine) continue;
         counts.set(m[1], (counts.get(m[1]) || 0) + 1);
       }
     }
@@ -188,6 +194,7 @@
   document.addEventListener('selectionchange', () => { if (document.activeElement === output) markActiveLine(); });
 
   function updateChordButtons() {
+    saveBookEdit();
     syncCode();
     const chords = songChords();
     const key = chords.join('|');
@@ -1203,6 +1210,7 @@
         <span class="batch-actions">
           <button type="button" data-act="up" title="Subir" ${i === 0 ? 'disabled' : ''}>↑</button>
           <button type="button" data-act="down" title="Bajar" ${i === songs.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" data-act="edit" title="Editar esta canción (acordes, letra, tono)">✎</button>
           <button type="button" data-act="remove" title="Quitar">✕</button>
         </span>`;
       li.querySelector('.batch-title').textContent = song.title;
@@ -1222,12 +1230,30 @@
       capoSel.innerHTML = '<option value="0">No</option>' +
         Array.from({ length: 9 }, (_, n) => `<option value="${n + 1}">${n + 1}</option>`).join('');
       capoSel.value = String(song.capo);
-      keySel.addEventListener('change', () => { song.sounding = keySel.value; });
-      capoSel.addEventListener('change', () => { song.capo = +capoSel.value; });
+      keySel.addEventListener('change', () => {
+        song.sounding = keySel.value;
+        if (bookEdit && bookEdit.index === i) syncPdfControlsFromSong();
+      });
+      capoSel.addEventListener('change', () => {
+        song.capo = +capoSel.value;
+        if (bookEdit && bookEdit.index === i) syncPdfControlsFromSong();
+      });
       li.querySelector('.batch-file').textContent = song.name;
+      if (bookEdit && bookEdit.index === i) li.classList.add('editing');
       li.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
         const act = b.dataset.act;
-        if (act === 'remove') songs.splice(i, 1);
+        if (act === 'edit') { enterBookEdit(i); return; }
+        if (act === 'remove') {
+          if (bookEdit) {
+            if (bookEdit.index === i) { exitBookEdit(); }
+            else if (bookEdit.index > i) bookEdit.index -= 1;
+          }
+          songs.splice(i, 1);
+        }
+        if (bookEdit && (act === 'up' || act === 'down')) {
+          const j = act === 'up' ? i - 1 : i + 1;
+          if (bookEdit.index === i) bookEdit.index = j; else if (bookEdit.index === j) bookEdit.index = i;
+        }
         if (act === 'up' && i > 0) [songs[i - 1], songs[i]] = [songs[i], songs[i - 1]];
         if (act === 'down' && i < songs.length - 1) [songs[i + 1], songs[i]] = [songs[i], songs[i + 1]];
         renderBatch();
@@ -1284,6 +1310,124 @@
   renderBatch();
   updateKeyControls();
 
+  // ── Modo cancionero: editar cada canción en el editor .cho ──
+  const bookBar = $('bookEdit');
+
+  function songState() {
+    return {
+      input: input.value, output: output.value, edited: outputEditedByHand, choTargetKey, fileBaseName,
+      meta: metadata(), sounding: pdfKey.value, capo: pdfCapo.value,
+    };
+  }
+
+  function loadSongIntoEditor(song) {
+    const meta = metaOf(song.cho);
+    $('title').value = song.title || meta.title || '';
+    $('author').value = meta.author || '';
+    $('key').value = '';
+    $('tempo').value = '';
+    input.value = song.txt || '';
+    choTargetKey = '';
+    fileBaseName = song.name || '';
+    output.value = song.cho;
+    outputEditedByHand = true;
+    lastKeySig = '';
+    lastChordKey = '';
+    updateChordButtons();
+    updateKeyControls();
+    syncPdfControlsFromSong();
+    if (!preview.hidden) renderPreview();
+  }
+
+  // Los selectores "Suena en" y "Capo" del editor muestran los de la canción
+  function syncPdfControlsFromSong() {
+    const song = bookEdit && songs[bookEdit.index];
+    if (!song) return;
+    pdfKey.value = [...pdfKey.options].some((o) => o.value === song.sounding) ? song.sounding : '';
+    pdfCapo.value = String(song.capo || 0);
+    updatePdfHint();
+    if (!preview.hidden) renderPreview();
+  }
+
+  // Cada cambio del .cho se guarda en la canción que se está editando
+  function saveBookEdit() {
+    if (!bookEdit) return;
+    const song = songs[bookEdit.index];
+    if (!song || song.cho === output.value) return;
+    song.cho = output.value;
+    const meta = metaOf(song.cho);
+    const info = output.value.trim() ? keyInfo(output.value) : null;
+    const newTitle = meta.title || song.title;
+    const newBase = info ? info.key : '';
+    const relist = newTitle !== song.title || newBase !== song.baseKey;
+    song.title = newTitle;
+    song.key = meta.key;
+    song.baseKey = newBase;
+    if (relist) { renderBatch(); paintBookBar(); }
+  }
+
+  function paintBookBar() {
+    if (!bookEdit) { bookBar.hidden = true; document.body.classList.remove('book-editing'); return; }
+    const i = bookEdit.index;
+    bookBar.hidden = false;
+    document.body.classList.add('book-editing');
+    $('bookPos').textContent = `${i + 1} de ${songs.length}`;
+    $('bookSong').textContent = songs[i].title || songs[i].name;
+    $('bookName').textContent = $('batchName').value.trim() || 'Cancionero';
+    $('bookPrev').disabled = i === 0;
+    $('bookNext').disabled = i === songs.length - 1;
+  }
+
+  function enterBookEdit(i) {
+    if (!songs[i]) return;
+    if (!bookEdit) bookEdit = { index: i, saved: songState() };
+    else bookEdit.index = i;
+    loadSongIntoEditor(songs[i]);
+    if (!input.value.trim()) panes.classList.add('focus-cho'); // sin texto original: el .cho ocupa todo
+    renderBatch();
+    paintBookBar();
+    bookBar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    output.focus();
+  }
+
+  function exitBookEdit() {
+    if (!bookEdit) return;
+    const s = bookEdit.saved;
+    bookEdit = null;
+    ['title', 'author', 'key', 'tempo'].forEach((k) => { $(k).value = s.meta[k] || ''; });
+    input.value = s.input;
+    output.value = s.output;
+    outputEditedByHand = s.edited;
+    choTargetKey = s.choTargetKey;
+    fileBaseName = s.fileBaseName;
+    try { panes.classList.toggle('focus-cho', localStorage.getItem(FOCUS_KEY) === '1'); } catch { /* ignorar */ }
+    lastKeySig = '';
+    lastChordKey = '';
+    updateChordButtons();
+    updateKeyControls();
+    pdfKey.value = [...pdfKey.options].some((o) => o.value === s.sounding) ? s.sounding : '';
+    pdfCapo.value = s.capo;
+    updatePdfHint();
+    if (!preview.hidden) renderPreview();
+    renderBatch();
+    paintBookBar();
+    $('batchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  $('bookPrev').addEventListener('click', () => bookEdit && enterBookEdit(bookEdit.index - 1));
+  $('bookNext').addEventListener('click', () => bookEdit && enterBookEdit(bookEdit.index + 1));
+  $('bookDone').addEventListener('click', () => { exitBookEdit(); flash('Cambios guardados en el cancionero'); });
+  $('bookPdf').addEventListener('click', () => $('batchPdf').click());
+
+  // "Suena en" y "Capo" del editor también se guardan en la canción
+  [pdfKey, pdfCapo].forEach((el) => el.addEventListener('change', () => {
+    if (!bookEdit) return;
+    const song = songs[bookEdit.index];
+    song.sounding = pdfKey.value;
+    song.capo = +pdfCapo.value;
+    renderBatch();
+  }));
+
   // ── Abrir un PDF de SongPro (llega desde editar.html) ──
   function importSongPro(data) {
     if (!data || data.app !== 'SongPro' || !Array.isArray(data.songs) || !data.songs.length) return;
@@ -1305,7 +1449,11 @@
       $('batchCols').value = String(data.cols || 2);
       $('batchPanel').open = true;
       renderBatch();
-      $('batchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (Number.isInteger(data.editIndex)) {
+        enterBookEdit(Math.min(Math.max(data.editIndex, 0), songs.length - 1));
+      } else {
+        $('batchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       flash(`Cancionero abierto: ${songs.length} canciones`);
       return;
     }

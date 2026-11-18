@@ -106,6 +106,20 @@ Vamp = {comment: Vamp}
     </div>
   </details>
 
+  <!-- Modo cancionero: aparece mientras editas una canción del cancionero -->
+  <div class="book-edit" id="bookEdit" hidden>
+    <div class="book-edit-info">
+      <span class="book-edit-tag">Cancionero · <span id="bookName"></span></span>
+      <span class="book-edit-song">Editando <span id="bookPos"></span>: <strong id="bookSong"></strong></span>
+    </div>
+    <div class="book-edit-actions">
+      <button class="btn ghost icon-btn" id="bookPrev" type="button" title="Canción anterior" aria-label="Canción anterior">‹</button>
+      <button class="btn ghost icon-btn" id="bookNext" type="button" title="Canción siguiente" aria-label="Canción siguiente">›</button>
+      <button class="btn ghost" id="bookDone" type="button" title="Terminar de editar y volver a la lista">Listo</button>
+      <button class="btn" id="bookPdf" type="button">Generar PDF</button>
+    </div>
+  </div>
+
   <main class="panes" id="panes">
     <div class="pane" id="dropzone">
       <!-- Barra delgada cuando el texto original está minimizado -->

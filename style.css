@@ -749,8 +749,27 @@ textarea::placeholder { color: var(--ink-muted); }
 .edit-error h2 { font-size: 22px; line-height: 28px; }
 .edit-error p { margin: 0; color: var(--ink-muted); }
 .edit-sub { margin: 0 0 var(--space-4); color: var(--ink-muted); font-size: 13px; line-height: 18px; }
-.edit-songs { margin: 0 0 var(--space-6); padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
-.edit-songs li::marker { color: var(--ink-muted); font: 500 13px var(--font-mono); }
+.edit-hint { margin: 0 0 var(--space-3); font-size: 14px; line-height: 20px; }
+.edit-songs { margin: 0 0 var(--space-6); padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; counter-reset: s; }
+.edit-songs li { counter-increment: s; }
+.edit-song {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-000);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+.edit-song::before { content: counter(s); font: 500 13px/1 var(--font-mono); color: var(--ink-muted); min-width: 18px; }
+.edit-song:hover { border-color: var(--chambray-strong); background: var(--chambray-soft); }
+.edit-song-go { margin-left: auto; font: 600 13px/18px var(--font-sans); color: var(--chambray-ink); }
 .edit-song-title { font-weight: 600; margin-right: var(--space-2); }
 .edit-songs em {
   font-style: normal;
@@ -764,6 +783,36 @@ textarea::placeholder { color: var(--ink-muted); }
 }
 .edit-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 @media (max-width: 820px) { .edit-actions .btn { flex: 1 1 auto; justify-content: center; } }
+
+/* ── Modo cancionero ── */
+.book-edit {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: var(--chambray-soft);
+  border: 1px solid var(--chambray);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+}
+.book-edit[hidden] { display: none; }
+.book-edit-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.book-edit-tag { font: 600 12px/16px var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--chambray-ink); }
+.book-edit-song { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-edit-song strong { font-weight: 600; }
+.book-edit-actions { display: flex; gap: var(--space-2); }
+.batch-item.editing { border-color: var(--chambray-strong); background: var(--chambray-soft); }
+.batch-actions button[data-act="edit"]:hover { background: var(--chambray-soft); color: var(--chambray-ink); }
+@media (max-width: 820px) {
+  .book-edit { top: 0; }
+  .book-edit-actions { width: 100%; }
+  .book-edit-actions .btn:not(.icon-btn) { flex: 1; justify-content: center; }
+}
 
 /* ── Impresión / PDF ── */
 /* Las hojas se arman con JavaScript (hoja carta, 1 o 2 columnas) en un
