@@ -85,11 +85,17 @@
       const base = keyOf(s.cho);
       const sounding = s.sounding || base;
       const tags = [sounding && `Tono ${keyLabel(sounding)}`, s.capo ? `Capo ${s.capo}` : ''].filter(Boolean);
-      return `<li><span class="edit-song-title">${esc(s.title || s.file || 'Sin título')}</span>${
-        tags.map((t) => `<em>${esc(t)}</em>`).join('')}</li>`;
+      return `<li><button type="button" class="edit-song" data-i="${data.songs.indexOf(s)}">` +
+        `<span class="edit-song-title">${esc(s.title || s.file || 'Sin título')}</span>${
+        tags.map((t) => `<em>${esc(t)}</em>`).join('')}<span class="edit-song-go">Editar ›</span></button></li>`;
     }).join('');
+    $('editSongs').querySelectorAll('.edit-song').forEach((b) =>
+      b.addEventListener('click', () => openInSongPro(+b.dataset.i)));
     $('editResult').hidden = false;
-    $('editOpen').textContent = book ? 'Abrir el cancionero en SongPro' : 'Abrir en SongPro';
+    $('editOpen').textContent = book ? 'Editar las canciones' : 'Editar la canción';
+    $('editHint').textContent = book
+      ? 'Toca una canción para editar sus acordes, letra o tono; luego pasas a la siguiente y generas el PDF de nuevo.'
+      : 'Se abre en el editor con sus acordes, su texto original y los ajustes del PDF.';
   }
 
   function fail(msg) {
@@ -138,16 +144,18 @@
   ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragging'); }));
   drop.addEventListener('drop', (e) => handle(e.dataTransfer.files[0]));
 
-  $('editOpen').addEventListener('click', () => {
+  function openInSongPro(index) {
     if (!current) return;
     try {
-      sessionStorage.setItem('songpro.import', JSON.stringify(current));
+      const data = current.kind === 'book' ? { ...current, editIndex: index } : current;
+      sessionStorage.setItem('songpro.import', JSON.stringify(data));
     } catch {
       flash('Tu navegador no dejó pasar los datos; descarga los .cho y ábrelos en SongPro.');
       return;
     }
     location.href = './';
-  });
+  }
+  $('editOpen').addEventListener('click', () => openInSongPro(0));
 
   $('editDownload').addEventListener('click', () => {
     if (!current) return;
