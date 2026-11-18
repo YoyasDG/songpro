@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SongPro · Editar un PDF</title>
+  <meta name="description" content="Sube un PDF hecho con SongPro y vuelve a editar sus canciones." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="theme-color" content="#f7f4ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#191b20" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="SongPro" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Fraunces:opsz,wght@9..144,600&family=JetBrains+Mono:wght@500;700&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="edit-page">
+  <header class="top">
+    <a class="stripes" href="./" aria-label="Volver a SongPro"></a>
+    <div class="top-text">
+      <h1>Editar un PDF</h1>
+      <p>Sube un PDF hecho con SongPro y retoma la canción o el cancionero tal como lo dejaste.</p>
+    </div>
+    <div class="top-actions">
+      <a class="btn ghost" href="./">Volver a SongPro</a>
+    </div>
+  </header>
+
+  <main class="edit-main">
+    <label class="edit-drop" id="editDrop">
+      <input id="pdfFile" type="file" accept="application/pdf,.pdf" hidden />
+      <span class="edit-drop-icon" aria-hidden="true">PDF</span>
+      <strong>Elige o arrastra un PDF de SongPro</strong>
+      <span class="edit-drop-help">Todo se lee aquí en tu navegador; el PDF no se sube a ningún lado.</span>
+    </label>
+
+    <section class="edit-result" id="editResult" hidden>
+      <div class="edit-result-head">
+        <span class="edit-badge" id="editKind"></span>
+        <h2 id="editTitle"></h2>
+        <p class="edit-sub" id="editSub"></p>
+      </div>
+      <ol class="edit-songs" id="editSongs"></ol>
+      <div class="edit-actions">
+        <button class="btn" id="editOpen" type="button">Abrir en SongPro</button>
+        <button class="btn ghost" id="editDownload" type="button">Descargar los .cho</button>
+      </div>
+    </section>
+
+    <section class="edit-error" id="editError" hidden>
+      <h2>Este PDF no trae datos de SongPro</h2>
+      <p id="editErrorText">Solo se pueden editar los PDF generados con el botón “Generar PDF” de SongPro.
+        Los que se imprimen con el navegador, o los de otras apps, no guardan la canción por dentro.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span id="status"></span>
+    <span>Todo corre en tu navegador · nada se sube a ningún servidor</span>
+  </footer>
+
+  <script src="editar.js"></script>
+</body>
+</html>

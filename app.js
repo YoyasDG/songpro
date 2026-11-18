@@ -792,32 +792,76 @@
   const USE_PDF = new URLSearchParams(location.search).has('pdf') ||
     (IS_IOS && (navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches));
 
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(src));
+    document.head.appendChild(s);
+  });
+
   let pdfLibPromise = null;
   function loadPdfLib() {
-    if (window.PDFLib) return Promise.resolve(window.PDFLib);
     if (!pdfLibPromise) {
-      pdfLibPromise = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'vendor/pdf-lib.min.js';
-        s.onload = () => resolve(window.PDFLib);
-        s.onerror = () => { pdfLibPromise = null; reject(new Error('pdf-lib')); };
-        document.head.appendChild(s);
-      });
+      pdfLibPromise = Promise.all([
+        window.PDFLib ? null : loadScript('vendor/pdf-lib.min.js'),
+        window.fontkit ? null : loadScript('vendor/fontkit.umd.min.js'),
+      ]).then(() => window.PDFLib).catch((e) => { pdfLibPromise = null; throw e; });
     }
     return pdfLibPromise;
   }
-  if (USE_PDF) window.addEventListener('load', () => setTimeout(() => loadPdfLib().catch(() => {}), 1500));
 
-  async function makePdf(stage) {
+  // Fuentes de Brisa para el PDF (las mismas de la página)
+  const PDF_FONTS = {
+    serif: 'fonts/Fraunces-SemiBold.ttf',
+    sans: 'fonts/DMSans-Regular.ttf',
+    sansB: 'fonts/DMSans-SemiBold.ttf',
+    mono: 'fonts/JetBrainsMono-Medium.ttf',
+    monoB: 'fonts/JetBrainsMono-Bold.ttf',
+  };
+  let fontBytesPromise = null;
+  function loadFontBytes() {
+    if (!fontBytesPromise) {
+      fontBytesPromise = Promise.all(Object.entries(PDF_FONTS).map(async ([k, url]) => {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(url);
+        return [k, new Uint8Array(await r.arrayBuffer())];
+      })).then(Object.fromEntries).catch((e) => { fontBytesPromise = null; throw e; });
+    }
+    return fontBytesPromise;
+  }
+  // Se precargan con calma para que el primer PDF salga rápido
+  window.addEventListener('load', () => setTimeout(() => {
+    loadPdfLib().catch(() => {});
+    loadFontBytes().catch(() => {});
+  }, 2000));
+
+  async function makePdf(stage, data) {
     const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
     const doc = await PDFDocument.create();
-    const F = {
-      sans: await doc.embedFont(StandardFonts.Helvetica),
-      sansB: await doc.embedFont(StandardFonts.HelveticaBold),
-      mono: await doc.embedFont(StandardFonts.Courier),
-      monoB: await doc.embedFont(StandardFonts.CourierBold),
-      serifB: await doc.embedFont(StandardFonts.TimesRomanBold),
-    };
+    let F;
+    try {
+      // Fraunces, DM Sans y JetBrains Mono, solo con las letras que se usan
+      doc.registerFontkit(window.fontkit);
+      const b = await loadFontBytes();
+      const opts = { subset: true };
+      F = {
+        sans: await doc.embedFont(b.sans, opts),
+        sansB: await doc.embedFont(b.sansB, opts),
+        mono: await doc.embedFont(b.mono, opts),
+        monoB: await doc.embedFont(b.monoB, opts),
+        serifB: await doc.embedFont(b.serif, opts),
+      };
+    } catch {
+      // Sin las fuentes (p. ej. sin internet la primera vez): fuentes estándar
+      F = {
+        sans: await doc.embedFont(StandardFonts.Helvetica),
+        sansB: await doc.embedFont(StandardFonts.HelveticaBold),
+        mono: await doc.embedFont(StandardFonts.Courier),
+        monoB: await doc.embedFont(StandardFonts.CourierBold),
+        serifB: await doc.embedFont(StandardFonts.TimesRomanBold),
+      };
+    }
     const PT = 0.75;                       // px → pt
     const W = 612, H = 792;                // carta en puntos
     const ML = 14 * 72 / 25.4, MT = 14 * 72 / 25.4;
@@ -832,11 +876,20 @@
       if (fam.includes('mono')) return bold ? F.monoB : F.mono;
       return bold ? F.sansB : F.sans;
     };
-    // Las fuentes estándar del PDF solo traen caracteres latinos (WinAnsi)
+    // Caracteres que la fuente no trae (♭ ♯ no vienen en ninguna) se cambian
     const REPLACE = { '♭': 'b', '♯': '#', '𝄪': 'x', '𝄫': 'bb', 'Δ': 'maj', '→': '->' };
+    const charsets = new Map();
+    const has = (font, ch) => {
+      if (typeof font.getCharacterSet !== 'function') {
+        try { font.encodeText(ch); return true; } catch { return false; }
+      }
+      if (!charsets.has(font)) charsets.set(font, new Set(font.getCharacterSet()));
+      return charsets.get(font).has(ch.codePointAt(0));
+    };
     const safe = (font, text) => [...text].map((ch) => {
-      const c = REPLACE[ch] ?? ch;
-      try { font.encodeText(c); return c; } catch { return '?'; }
+      if (/\s/.test(ch) || has(font, ch)) return ch;
+      const c = REPLACE[ch];
+      return c !== undefined && [...c].every((x) => has(font, x)) ? c : '?';
     }).join('');
 
     for (const pp of stage.querySelectorAll('.pp')) {
@@ -962,16 +1015,40 @@
         flush(n.nodeValue.length);
       }
     }
+    // Datos para volver a editar: songpro.json + cada .cho como adjunto
+    if (data) {
+      const enc = new TextEncoder();
+      const when = new Date();
+      await doc.attach(enc.encode(JSON.stringify(data, null, 2)), 'songpro.json', {
+        mimeType: 'application/json',
+        description: 'Datos de SongPro para volver a editar este PDF',
+        creationDate: when,
+        modificationDate: when,
+      });
+      const used = new Set();
+      for (const s of data.songs) {
+        let name = `${ChordConverter.sanitizeBaseName(s.title || s.file || 'cancion')}.cho`;
+        for (let i = 2; used.has(name); i += 1) name = name.replace(/(-\d+)?\.cho$/, `-${i}.cho`);
+        used.add(name);
+        await doc.attach(enc.encode(s.cho), name, {
+          mimeType: 'text/plain', description: s.title || name, creationDate: when, modificationDate: when,
+        });
+      }
+      doc.setTitle(data.kind === 'book' ? data.name : (data.songs[0]?.title || 'Canción'));
+      doc.setKeywords(['SongPro', 'ChordPro']);
+    }
+    doc.setCreator('SongPro');
+    doc.setProducer('SongPro (pdf-lib)');
     return doc.save();
   }
 
   let pdfUrl = null;
-  async function sharePdf(stage, fileName) {
+  async function sharePdf(stage, fileName, data) {
     flash('Generando PDF…');
     let bytes;
     try {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      bytes = await makePdf(stage);
+      bytes = await makePdf(stage, data);
     } catch {
       flash('No se pudo generar el PDF');
       return;
@@ -995,13 +1072,25 @@
       navigator.share({ files: [file], title: name }).catch(() => {});
     };
     $('pdfClose').onclick = () => dlg.close();
+    const open = $('pdfOpen');
+    open.hidden = USE_PDF; // en la app de iPhone no se puede abrir otra ventana
+    open.onclick = () => { window.open(pdfUrl, '_blank'); };
+    const browser = $('pdfBrowserPrint');
+    browser.hidden = USE_PDF;
+    browser.onclick = () => { dlg.close(); browserPrint(lastPrint); };
     if (typeof dlg.showModal === 'function') dlg.showModal(); else window.open(pdfUrl, '_blank');
   }
 
-  function printHtml(html, fileName, twoCols) {
-    const stage = layoutPages(html, twoCols);
-    if (USE_PDF) { sharePdf(stage, fileName); return; }
+  // "Generar PDF": PDF de SongPro (fuentes de Brisa + datos para editar).
+  // La impresión del navegador queda como opción en el aviso.
+  let lastPrint = null;
+  function printHtml(html, fileName, twoCols, data) {
+    lastPrint = { html, fileName, twoCols };
+    sharePdf(layoutPages(html, twoCols), fileName, data);
+  }
 
+  function browserPrint({ html, fileName, twoCols }) {
+    const stage = layoutPages(html, twoCols);
     printSheet.className = `print-sheet${twoCols ? ' two-cols' : ''} laid`;
     printSheet.replaceChildren(...stage.childNodes);
     stage.remove();
@@ -1024,6 +1113,26 @@
       `<section class="song-page">${sheet.html}</section>`,
       ChordConverter.sanitizeBaseName(`${$('title').value || sheet.title || fileBaseName || 'cancion'} ${extra}`),
       $('pdfCols').value === '2',
+      {
+        app: 'SongPro',
+        version: 1,
+        kind: 'song',
+        created: new Date().toISOString(),
+        sharps: useSharps,
+        cols: +$('pdfCols').value,
+        songs: [{
+          file: fileBaseName || '',
+          title: $('title').value || sheet.title || '',
+          cho: output.value,
+          txt: input.value,
+          meta: metadata(),
+          mode: modeSel.value,
+          editedByHand: outputEditedByHand,
+          sounding: pdfKey.value,
+          capo: +pdfCapo.value,
+          notation: $('pdfNotation').value,
+        }],
+      },
     );
   });
 
@@ -1158,11 +1267,76 @@
     }
     html += songs.map((s) =>
       `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo, $('batchNumbers').checked)).html}</section>`).join('');
-    printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2');
+    printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2', {
+      app: 'SongPro',
+      version: 1,
+      kind: 'book',
+      created: new Date().toISOString(),
+      name: bookName,
+      sharps: useSharps,
+      cols: +$('batchCols').value,
+      index: $('batchIndex').checked,
+      numbers: $('batchNumbers').checked,
+      songs: songs.map((s) => ({ file: s.name, title: s.title, cho: s.cho, sounding: s.sounding, capo: s.capo })),
+    });
   });
 
   renderBatch();
   updateKeyControls();
+
+  // ── Abrir un PDF de SongPro (llega desde editar.html) ──
+  function importSongPro(data) {
+    if (!data || data.app !== 'SongPro' || !Array.isArray(data.songs) || !data.songs.length) return;
+    if (typeof data.sharps === 'boolean' && data.sharps !== useSharps) {
+      useSharps = data.sharps;
+      try { localStorage.setItem(SHARPS_KEY, useSharps ? '1' : '0'); } catch { /* ignorar */ }
+      paintAccSwitch();
+    }
+    if (data.kind === 'book') {
+      songs = data.songs.map((s) => {
+        const info = keyInfo(s.cho);
+        const meta = metaOf(s.cho);
+        return { name: s.file || `${s.title}.cho`, cho: s.cho, ...meta, title: s.title || meta.title,
+          baseKey: info ? info.key : '', sounding: s.sounding || '', capo: +s.capo || 0 };
+      });
+      $('batchName').value = data.name || '';
+      $('batchIndex').checked = data.index !== false;
+      $('batchNumbers').checked = !!data.numbers;
+      $('batchCols').value = String(data.cols || 2);
+      $('batchPanel').open = true;
+      renderBatch();
+      $('batchPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      flash(`Cancionero abierto: ${songs.length} canciones`);
+      return;
+    }
+    const s = data.songs[0];
+    const m = s.meta || {};
+    ['title', 'author', 'key', 'tempo'].forEach((k) => { $(k).value = m[k] || ''; });
+    if (s.mode) modeSel.value = s.mode;
+    input.value = s.txt || '';
+    fileBaseName = s.file || '';
+    choTargetKey = '';
+    output.value = s.cho;
+    outputEditedByHand = true; // el .cho guardado manda (pudo estar editado o transportado)
+    lastKeySig = '';
+    lastChordKey = '';
+    updateChordButtons();
+    updateKeyControls();
+    $('pdfNotation').value = s.notation || 'acordes';
+    $('pdfCols').value = String(data.cols || 1);
+    pdfCapo.value = String(s.capo || 0);
+    if (s.sounding && [...pdfKey.options].some((o) => o.value === s.sounding)) pdfKey.value = s.sounding;
+    updatePdfHint();
+    if (!preview.hidden) renderPreview();
+    flash(`Abierto: ${s.title || 'canción'}`);
+  }
+  try {
+    const pending = sessionStorage.getItem('songpro.import');
+    if (pending) {
+      sessionStorage.removeItem('songpro.import');
+      importSongPro(JSON.parse(pending));
+    }
+  } catch { /* nada que abrir */ }
 
   updateChordButtons();
 })();

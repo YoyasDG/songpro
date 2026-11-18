@@ -29,7 +29,10 @@
       <h1>SongPro</h1>
       <p>Pega tu canción con los acordes arriba de la letra y te damos el <code>.cho</code> listo para Planning.</p>
     </div>
-    <button class="btn ghost install-btn" id="installBtn" type="button" hidden>Instalar app</button>
+    <div class="top-actions">
+      <a class="btn ghost" href="editar.html" title="Sube un PDF hecho con SongPro para volver a editarlo">Editar un PDF</a>
+      <button class="btn ghost install-btn" id="installBtn" type="button" hidden>Instalar app</button>
+    </div>
   </header>
 
   <!-- Guía para iPhone/iPad: Safari no permite instalar desde un botón -->
@@ -214,12 +217,14 @@ Santo Santo es Él
   <!-- PDF listo (app instalada en iPhone, donde iOS no permite imprimir) -->
   <dialog class="pdf-ready" id="pdfReady">
     <h2>Tu PDF está listo</h2>
-    <p>Toca <strong>Compartir</strong> y elige <strong>Imprimir</strong> o <strong>Guardar en Archivos</strong>.</p>
+    <p>Lleva la canción guardada por dentro: súbelo en <strong>Editar un PDF</strong> cuando quieras cambiarle algo.</p>
     <div class="pdf-actions">
       <button class="btn" id="pdfShare" type="button">Compartir / Imprimir</button>
-      <a class="btn ghost" id="pdfDownload" href="#" download="cancion.pdf">Descargar PDF</a>
+      <a class="btn" id="pdfDownload" href="#" download="cancion.pdf">Descargar PDF</a>
+      <button class="btn ghost" id="pdfOpen" type="button">Abrir para imprimir</button>
       <button class="btn ghost" id="pdfClose" type="button">Cerrar</button>
     </div>
+    <button class="link-btn" id="pdfBrowserPrint" type="button">Imprimir con el navegador (ese PDF no se puede volver a editar)</button>
   </dialog>
 
   <!-- Hoja que se imprime al presionar PDF (oculta en pantalla) -->

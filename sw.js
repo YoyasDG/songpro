@@ -4,7 +4,7 @@
  * nueva (así los cambios que subas a GitHub se ven de inmediato) y se guarda
  * una copia; si no hay conexión, se usa la copia guardada.
  */
-const CACHE = 'songpro-v10';
+const CACHE = 'songpro-v11';
 const CORE = [
   './',
   './index.html',
@@ -17,6 +17,15 @@ const CORE = [
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
   './icons/favicon.svg',
+  './editar.html',
+  './editar.js',
+  './vendor/pdf-lib.min.js',
+  './vendor/fontkit.umd.min.js',
+  './fonts/Fraunces-SemiBold.ttf',
+  './fonts/DMSans-Regular.ttf',
+  './fonts/DMSans-SemiBold.ttf',
+  './fonts/JetBrainsMono-Medium.ttf',
+  './fonts/JetBrainsMono-Bold.ttf',
 ];
 
 self.addEventListener('install', (event) => {
