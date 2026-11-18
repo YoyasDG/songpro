@@ -274,8 +274,46 @@
   });
 
   // ── archivos ──
+  const CHO_RE = /\.(cho|chordpro|chopro|crd|pro)$/i;
+
+  // Un .cho va directo al editor (sin texto original), listo para editar
+  function loadChoFile(file) {
+    if (output.value.trim() && outputEditedByHand && !bookEdit &&
+        !confirm('Editaste el .cho a mano. ¿Reemplazarlo con el archivo que abriste?')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = ChordConverter.normalizeText(String(reader.result)).replace(/\s+$/, '') + '\n';
+      const meta = metaOf(text);
+      const tempo = (/^\s*\{\s*tempo\s*:\s*(.*?)\s*\}/im.exec(text) || [])[1] || '';
+      $('title').value = meta.title || file.name.replace(/\.[^.]+$/, '');
+      $('author').value = meta.author || '';
+      $('key').value = meta.key || '';
+      $('tempo').value = tempo;
+      if (!bookEdit) input.value = '';
+      fileBaseName = file.name;
+      choTargetKey = '';
+      output.value = text;
+      outputEditedByHand = true; // el .cho manda: no se reconvierte desde el texto original
+      lastKeySig = '';
+      lastChordKey = '';
+      updateChordButtons();
+      updateKeyControls();
+      if (!input.value.trim()) panes.classList.add('focus-cho');
+      if (!preview.hidden) renderPreview();
+      output.focus();
+      output.setSelectionRange(0, 0);
+      flash(`Abierto: ${file.name}`);
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
   function loadFile(file) {
     if (!file) return;
+    if (CHO_RE.test(file.name)) { loadChoFile(file); return; }
+    if (/\.pdf$/i.test(file.name)) {
+      flash('Para un PDF de SongPro usa “Editar un PDF” (arriba)');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       input.value = ChordConverter.normalizeText(String(reader.result));
@@ -300,6 +338,27 @@
   ['dragleave', 'drop'].forEach((ev) =>
     drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('dragging'); }));
   drop.addEventListener('drop', (e) => loadFile(e.dataTransfer.files[0]));
+
+  // Abrir .cho desde el panel del .cho (botón o arrastrando el archivo)
+  $('choFile').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) (CHO_RE.test(f.name) || !/\.txt$/i.test(f.name) ? loadChoFile(f) : loadFile(f));
+    e.target.value = '';
+  });
+  const choPane = $('choPane');
+  ['dragenter', 'dragover'].forEach((ev) => choPane.addEventListener(ev, (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    e.preventDefault(); choPane.classList.add('dragging');
+  }));
+  ['dragleave', 'drop'].forEach((ev) => choPane.addEventListener(ev, (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    e.preventDefault(); choPane.classList.remove('dragging');
+  }));
+  choPane.addEventListener('drop', (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    const f = e.dataTransfer.files[0];
+    if (f) (/\.txt$/i.test(f.name) ? loadFile(f) : loadChoFile(f));
+  });
 
   $('clear').addEventListener('click', () => {
     input.value = '';

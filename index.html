@@ -131,8 +131,8 @@ Vamp = {comment: Vamp}
         <h2>Texto original</h2>
         <div class="actions">
           <button class="btn ghost icon-btn" id="collapseTxt" type="button" title="Minimizar el texto original y dar todo el espacio al .cho" aria-label="Minimizar texto original">‹</button>
-          <label class="btn ghost">Abrir .txt
-            <input id="file" type="file" accept=".txt,text/plain" hidden />
+          <label class="btn ghost" title="Abre un .txt (o un .cho, que va directo al editor)">Abrir .txt
+            <input id="file" type="file" accept=".txt,text/plain,.cho,.chordpro,.chopro,.crd,.pro" hidden />
           </label>
           <button class="btn ghost" id="clear" type="button">Limpiar</button>
         </div>
@@ -147,13 +147,16 @@ Santo Santo es Él
 (también puedes arrastrar un archivo .txt aquí)"></textarea>
     </div>
 
-    <div class="pane">
+    <div class="pane" id="choPane">
       <div class="pane-head">
         <div class="tabs" role="tablist">
           <button class="tab active" data-tab="cho" type="button">.cho</button>
           <button class="tab" data-tab="preview" type="button">Vista previa</button>
         </div>
         <div class="actions">
+          <label class="btn ghost" title="Abre un .cho para editarlo (también puedes arrastrarlo aquí)">Abrir .cho
+            <input id="choFile" type="file" accept=".cho,.chordpro,.chopro,.crd,.pro,text/plain" hidden />
+          </label>
           <button class="btn ghost" id="copy" type="button">Copiar</button>
           <button class="btn" id="download" type="button">Descargar .cho</button>
         </div>
