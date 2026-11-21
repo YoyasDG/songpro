@@ -503,8 +503,32 @@
       .replace(/[  -   　]/g, ' ');
   }
 
+  // Repeticiones: "//A - B//", "Intro: //A B//", "//Santo es el Señor//",
+  // "|: A B :|". El número de diagonales es el número de veces ("///" = x3);
+  // "x4", "4x" o "4 veces" al final manda. Las marcas se cambian por espacios
+  // del mismo ancho para que los acordes no se muevan de columna.
+  const REPEAT_LINE_RE = /^(.*?)(\/{2,}|\|\|?:)(.*?)(\/{2,}|:\|\|?)\s*(?:\(?\s*(?:[x×]\s*(\d+)|(\d+)\s*[x×]|(\d+)\s*(?:veces|vezes|times))\s*\)?)?\s*$/i;
+
+  function stripRepeat(line) {
+    const m = REPEAT_LINE_RE.exec(line);
+    if (!m) return null;
+    const [, pre, open, inner, close] = m;
+    if (!inner.trim()) return null;
+    if (/https?:$/i.test(pre.trim())) return null; // una dirección web, no una repetición
+    const explicit = m[5] || m[6] || m[7];
+    const slashes = /^\/+$/.test(close) ? close.length : 2;
+    const times = Math.max(2, explicit ? parseInt(explicit, 10) : slashes);
+    return { line: `${pre}${' '.repeat(open.length)}${inner}`.replace(/\s+$/, ''), times };
+  }
+
   function parseSong(text, options = {}) {
-    const lines = cleanInvisible(text).replace(/\r\n?/g, '\n').split('\n');
+    const repeats = [];
+    const lines = cleanInvisible(text).replace(/\r\n?/g, '\n').split('\n').map((line, i) => {
+      const r = stripRepeat(line);
+      repeats[i] = r ? r.times : 0;
+      return r ? r.line : line;
+    });
+    const repeatComment = (n) => `{comment: x${n}}`;
     const output = [];
     const dictionary = options.dictionary instanceof Map
       ? options.dictionary
@@ -516,7 +540,10 @@
       const special = convertSpecialLine(rawLine, dictionary);
 
       if (special.kind === 'label') {
-        output.push(...special.lines);
+        const lbl = [...special.lines];
+        // "Intro: //A B//" → {comment: Intro x2}
+        if (repeats[index] && /^\{comment: .*\}$/.test(lbl[0])) lbl[0] = lbl[0].replace(/\}$/, ` x${repeats[index]}}`);
+        output.push(...lbl);
         index += 1;
         continue;
       }
@@ -549,17 +576,21 @@
             ...options,
             sourceLineLength: extracted.sourceLineLength,
           }));
+          const times = repeats[index] || repeats[index + 1];
+          if (times) output.push(repeatComment(times));
           index += 2;
           continue;
         }
 
         output.push(formatChordOnlyLine(extracted.chords));
+        if (repeats[index]) output.push(repeatComment(repeats[index]));
         index += 1;
         continue;
       }
 
       // Letra sin acordes: quitar espacios sobrantes al final
       output.push(rawLine.trimEnd());
+      if (repeats[index]) output.push(repeatComment(repeats[index]));
       index += 1;
     }
 
