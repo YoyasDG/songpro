@@ -432,7 +432,7 @@
 
   // Convierte el .cho en HTML de hoja de canción. Cada sección (etiqueta +
   // sus líneas) va en un bloque .blk para que al imprimir no se parta.
-  function buildSheet(text) {
+  function buildSheet(text, extraHtml = '') {
     const meta = {};
     const blocks = [];
     let current = null;
@@ -501,12 +501,12 @@
     const html =
       (title ? `<div class="title">${esc(title)}</div>` : '') +
       (sub ? `<div class="sub">${esc(sub)}</div>` : '') +
-      `<div class="song">${blocks.map((b) => `<div class="${b.cls}">${b.body}</div>`).join('')}</div>`;
+      `<div class="song">${blocks.map((b) => `<div class="${b.cls}">${b.body}</div>`).join('')}${extraHtml}</div>`;
     return { title, html, empty: blocks.length === 0 };
   }
 
   function renderPreview() {
-    const sheet = buildSheet(pdfText());
+    const sheet = buildSheet(pdfText(), pdfPiano());
     preview.innerHTML = sheet.empty && !sheet.title
       ? '<div class="sub">Nada que mostrar todavía.</div>'
       : sheet.html;
@@ -567,6 +567,42 @@
   // El .cho del editor no cambia.
   function pdfText() {
     return renderFor(output.value, pdfKey.value, +pdfCapo.value, $('pdfNotation').value === 'numeros');
+  }
+
+  // ── Acordes de piano ──
+  ['pdfPiano', 'batchPiano'].forEach((id) => {
+    const box = $(id);
+    try { box.checked = localStorage.getItem(`songpro.${id}`) === '1'; } catch { /* ignorar */ }
+    box.addEventListener('change', () => { try { localStorage.setItem(`songpro.${id}`, box.checked ? '1' : '0'); } catch { /* ignorar */ } });
+  });
+  // Los diagramas muestran lo que SUENA (tono final, sin capo: el capo es
+  // cosa de la guitarra). En números, cada acorde lleva su grado: "5 (D)".
+  function pianoFor(cho, key, numeros) {
+    if (!cho.trim() || typeof Piano === 'undefined') return '';
+    const sounding = renderFor(cho, key, 0, false);
+    const chords = [];
+    for (const line of sounding.split('\n')) {
+      if (/^\s*\{.*\}\s*$/.test(line) || /^\s*#/.test(line)) continue;
+      for (const m of line.matchAll(/\[([^\]]+)\]/g)) {
+        const c = m[1].trim();
+        if (ChordConverter.extractChords(c).isChordLine) chords.push(c); // fuera etiquetas viejas tipo [Estribillo]
+      }
+    }
+    let label = (c) => esc(c);
+    if (numeros) {
+      const nash = toNashville(sounding);
+      const info = keyInfo(sounding);
+      const k = info && /^([A-G])([#b]?)/.exec(info.key);
+      if (k && nash) {
+        const tonic = { letter: k[1], pc: (NATURAL_PC[k[1]] + (k[2] === '#' ? 1 : k[2] === 'b' ? -1 : 0) + 12) % 12, steps: MAJOR_STEPS };
+        label = (c) => `${chordHtml(chordToNashville(c, tonic))} <span class="pc-real">(${esc(c)})</span>`;
+      }
+    }
+    return Piano.block(chords.map((c) => ({ chord: c, labelHtml: label(c) })), esc);
+  }
+
+  function pdfPiano() {
+    return $('pdfPiano').checked ? pianoFor(output.value, pdfKey.value, $('pdfNotation').value === 'numeros') : '';
   }
 
   // Aplica "suena en" + capo (y, si se pide, números Nashville) a cualquier
@@ -762,7 +798,7 @@
   });
 
   // 2 y 3) Tono final y capo solo para el PDF
-  [pdfKey, pdfCapo, $('pdfNotation')].forEach((el) => el.addEventListener('change', () => {
+  [pdfKey, pdfCapo, $('pdfNotation'), $('pdfPiano')].forEach((el) => el.addEventListener('change', () => {
     updatePdfHint();
     if (!preview.hidden) renderPreview();
   }));
@@ -839,7 +875,8 @@
         part.append(kids[i]);
         if (height(col) > avail) { kids[i].remove(); break; }
       }
-      const minKeep = Math.min(kids.length, kids[0]?.matches('.comment, .section-label') ? 2 : 1);
+      const minKeep = Math.min(kids.length, blk.classList.contains('piano-blk') ? 3
+        : kids[0]?.matches('.comment, .section-label') ? 2 : 1);
       for (; i < minKeep; i += 1) part.append(kids[i]); // siempre avanza
       if (i < kids.length) {
         const rest = blk.cloneNode(false);
@@ -901,6 +938,28 @@
     loadPdfLib().catch(() => {});
     loadFontBytes().catch(() => {});
   }, 2000));
+
+  // SVG → PNG (4x) para meterlo al PDF
+  function svgToPng(svg, w, h) {
+    return new Promise((resolve) => {
+      const clone = svg.cloneNode(true);
+      clone.setAttribute('width', w);
+      clone.setAttribute('height', h);
+      const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
+      const img = new Image();
+      img.onload = () => {
+        const k = 4;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(w * k);
+        canvas.height = Math.ceil(h * k);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
 
   async function makePdf(stage, data) {
     const { PDFDocument, StandardFonts, rgb } = await loadPdfLib();
@@ -990,6 +1049,16 @@
         page.drawLine({ start: { x: X(r.left), y: Y(r.top) }, end: { x: X(r.left), y: Y(r.bottom) },
           thickness: parseFloat(cs.borderLeftWidth) * PT, color: color(cs.borderLeftColor) });
       });
+      // Dibujos (teclados y pentagramas de piano): se pasan a imagen
+      for (const svg of pp.querySelectorAll('svg')) {
+        const r = svg.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        const png = await svgToPng(svg, r.width, r.height);
+        if (!png) continue;
+        const img = await doc.embedPng(png);
+        page.drawImage(img, { x: X(r.left), y: Y(r.bottom), width: r.width * PT, height: r.height * PT });
+      }
+
       // Números del índice (los ::marker no son texto)
       pp.querySelectorAll('.index-list li').forEach((li, i) => {
         const r = li.getBoundingClientRect();
@@ -1171,7 +1240,7 @@
 
   $('pdf').addEventListener('click', () => {
     if (!output.value.trim()) return flash('Primero pega o abre una canción');
-    const sheet = buildSheet(pdfText());
+    const sheet = buildSheet(pdfText(), pdfPiano());
     const capo = +pdfCapo.value;
     const extra = [pdfKey.value, capo ? `capo ${capo}` : '', $('pdfNotation').value === 'numeros' ? 'numeros' : '']
       .filter(Boolean).join(' ');
@@ -1197,6 +1266,7 @@
           sounding: pdfKey.value,
           capo: +pdfCapo.value,
           notation: $('pdfNotation').value,
+          piano: $('pdfPiano').checked,
         }],
       },
     );
@@ -1351,7 +1421,8 @@
       </section>`;
     }
     html += songs.map((s) =>
-      `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo, $('batchNumbers').checked)).html}</section>`).join('');
+      `<section class="song-page">${buildSheet(renderFor(s.cho, s.sounding, s.capo, $('batchNumbers').checked),
+        $('batchPiano').checked ? pianoFor(s.cho, s.sounding, $('batchNumbers').checked) : '').html}</section>`).join('');
     printHtml(html, ChordConverter.sanitizeBaseName(bookName), $('batchCols').value === '2', {
       app: 'SongPro',
       version: 1,
@@ -1362,6 +1433,7 @@
       cols: +$('batchCols').value,
       index: $('batchIndex').checked,
       numbers: $('batchNumbers').checked,
+      piano: $('batchPiano').checked,
       songs: songs.map((s) => ({ file: s.name, title: s.title, cho: s.cho, sounding: s.sounding, capo: s.capo })),
     });
   });
@@ -1505,6 +1577,7 @@
       $('batchName').value = data.name || '';
       $('batchIndex').checked = data.index !== false;
       $('batchNumbers').checked = !!data.numbers;
+      $('batchPiano').checked = !!data.piano;
       $('batchCols').value = String(data.cols || 2);
       $('batchPanel').open = true;
       renderBatch();
@@ -1530,6 +1603,7 @@
     updateChordButtons();
     updateKeyControls();
     $('pdfNotation').value = s.notation || 'acordes';
+    $('pdfPiano').checked = !!s.piano;
     $('pdfCols').value = String(data.cols || 1);
     pdfCapo.value = String(s.capo || 0);
     if (s.sounding && [...pdfKey.options].some((o) => o.value === s.sounding)) pdfKey.value = s.sounding;
