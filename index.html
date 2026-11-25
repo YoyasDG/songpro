@@ -97,6 +97,7 @@ Vamp = {comment: Vamp}
         <input id="batchName" class="batch-name" type="text" placeholder="Nombre: Cancionero" title="Nombre del cancionero y del PDF" />
         <label class="batch-check"><input id="batchIndex" type="checkbox" checked /> Índice</label>
         <label class="batch-check" title="Acordes como grados de la escala (Nashville)"><input id="batchNumbers" type="checkbox" /> Números</label>
+        <label class="batch-check" title="Diagramas de piano al final de cada canción"><input id="batchPiano" type="checkbox" /> Piano</label>
         <select id="batchCols" class="cols" title="Columnas">
           <option value="1">1 columna</option>
           <option value="2" selected>2 columnas</option>
@@ -216,6 +217,7 @@ Santo Santo es Él
             <option value="numeros">Números</option>
           </select>
         </label>
+        <label class="batch-check piano-check" title="Agrega al final un diagrama de teclado y pentagrama por cada acorde (para pianistas)"><input id="pdfPiano" type="checkbox" /> Acordes de piano</label>
         <select id="pdfCols" class="cols" title="Columnas del PDF">
           <option value="1">1 columna</option>
           <option value="2">2 columnas</option>
@@ -249,6 +251,7 @@ Santo Santo es Él
 
   <script src="converter.js"></script>
   <script src="transposer.js"></script>
+  <script src="piano.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

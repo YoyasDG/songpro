@@ -4,13 +4,14 @@
  * nueva (así los cambios que subas a GitHub se ven de inmediato) y se guarda
  * una copia; si no hay conexión, se usa la copia guardada.
  */
-const CACHE = 'songpro-v15';
+const CACHE = 'songpro-v16';
 const CORE = [
   './',
   './index.html',
   './style.css',
   './converter.js',
   './transposer.js',
+  './piano.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
