@@ -660,6 +660,7 @@ textarea::placeholder { color: var(--ink-muted); }
 .panes { transition: grid-template-columns .25s ease; }
 .pane-rail { display: none; }
 .icon-btn { padding: 8px 12px; font-size: 18px; line-height: 20px; }
+.icon-glyph { display: inline-block; }
 .panes.focus-cho { grid-template-columns: 48px 1fr; }
 .panes.focus-cho #dropzone > :not(.pane-rail) { display: none; }
 .panes.focus-cho .pane-rail {
@@ -698,7 +699,7 @@ textarea::placeholder { color: var(--ink-muted); }
   .panes.focus-cho .pane-rail { flex-direction: row; justify-content: flex-start; padding: var(--space-2) var(--space-3); }
   .panes.focus-cho .rail-icon { transform: rotate(90deg); }
   .rail-label { writing-mode: horizontal-tb; transform: none; }
-  #collapseTxt { transform: rotate(90deg); }
+  #collapseTxt .icon-glyph { transform: rotate(90deg); } /* solo la flecha, no el botón */
 }
 
 /* ── Editar un PDF (editar.html) ── */
@@ -989,6 +990,7 @@ textarea::placeholder { color: var(--ink-muted); }
   .pane-head { padding: var(--space-3); }
   .pane-head .actions { width: 100%; flex-wrap: wrap; }
   .pane-head .actions > * { flex: 1 1 auto; justify-content: center; text-align: center; }
+  .pane-head .actions > .icon-btn { flex: none; width: 44px; padding: 8px 0; }
   .pane-head .cols { height: 38px; }
 
   .quick { gap: 6px; }
